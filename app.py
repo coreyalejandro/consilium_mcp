@@ -17,7 +17,7 @@ from smolagents import CodeAgent, DuckDuckGoSearchTool, FinalAnswerTool, Inferen
 # Load environment variables
 load_dotenv()
 
-# API Configuration - These will be updated by UI if needed
+# API Configuration
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY") 
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
 MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
@@ -90,13 +90,10 @@ Please provide a thorough analysis based on current, reliable information."""
 
 class VisualConsensusEngine:
     def __init__(self, moderator_model: str = None, update_callback=None):
-        global MISTRAL_API_KEY, SAMBANOVA_API_KEY
-        
         self.moderator_model = moderator_model or MODERATOR_MODEL
         self.search_agent = WebSearchAgent()
         self.update_callback = update_callback  # For real-time updates
         
-        # Use global API keys (which may be updated from UI)
         self.models = {
             'mistral': {
                 'name': 'Mistral Large',
@@ -174,7 +171,6 @@ class VisualConsensusEngine:
         return prompt[:100]
     
     def _call_sambanova(self, model: str, prompt: str) -> Optional[str]:
-        global SAMBANOVA_API_KEY
         if not SAMBANOVA_API_KEY:
             return None
             
@@ -210,7 +206,6 @@ class VisualConsensusEngine:
             return None
     
     def _call_mistral(self, prompt: str) -> Optional[str]:
-        global MISTRAL_API_KEY
         if not MISTRAL_API_KEY:
             return None
             
@@ -705,59 +700,6 @@ def log_discussion_event(event_type: str, speaker: str = "", content: str = "", 
         **kwargs
     })
 
-def update_api_keys(mistral_key, sambanova_key):
-    """Update API keys from UI input"""
-    global MISTRAL_API_KEY, SAMBANOVA_API_KEY
-    
-    status_messages = []
-    
-    # Update Mistral key if provided, otherwise keep env var
-    if mistral_key.strip():
-        MISTRAL_API_KEY = mistral_key.strip()
-        status_messages.append("✅ Mistral API key updated")
-    elif not MISTRAL_API_KEY:
-        status_messages.append("❌ No Mistral API key (env or input)")
-    else:
-        status_messages.append("✅ Using Mistral API key from environment")
-        
-    # Update SambaNova key if provided, otherwise keep env var  
-    if sambanova_key.strip():
-        SAMBANOVA_API_KEY = sambanova_key.strip()
-        status_messages.append("✅ SambaNova API key updated")
-    elif not SAMBANOVA_API_KEY:
-        status_messages.append("❌ No SambaNova API key (env or input)")
-    else:
-        status_messages.append("✅ Using SambaNova API key from environment")
-    
-    # Check if we have at least one working key
-    if not MISTRAL_API_KEY and not SAMBANOVA_API_KEY:
-        return "❌ ERROR: No API keys available! Please provide at least one API key."
-    
-    return " | ".join(status_messages)
-
-def check_model_status():
-    """Check and display current model availability"""
-    global MISTRAL_API_KEY, SAMBANOVA_API_KEY
-    
-    status_info = "## 🔍 Model Availability Status\n\n"
-    
-    models = {
-        'Mistral Large': MISTRAL_API_KEY,
-        'DeepSeek-R1': SAMBANOVA_API_KEY,
-        'Meta-Llama-3.1-8B': SAMBANOVA_API_KEY,
-        'QwQ-32B': SAMBANOVA_API_KEY,
-        'Web Search Agent': True
-    }
-    
-    for model_name, available in models.items():
-        if model_name == 'Web Search Agent':
-            status = "✅ Available (Built-in)"
-        else:
-            status = "✅ Available" if available else "❌ Not configured"
-        status_info += f"**{model_name}:** {status}\n\n"
-    
-    return status_info
-
 # Create the hybrid interface
 with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
@@ -908,85 +850,38 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         gr.Timer(2).tick(lambda: json.dumps(current_roundtable_state), outputs=[roundtable])
     
     with gr.Tab("🔧 Configuration & Setup"):
-        gr.Markdown("## 🔑 API Keys Configuration")
-        gr.Markdown("*Enter your API keys below OR set them as environment variables*")
+        def check_model_status():
+            engine = VisualConsensusEngine()
+            status_info = "## 🔍 Model Availability Status\n\n"
+            
+            for model_id, model_info in engine.models.items():
+                if model_id == 'search':
+                    status = "✅ Available (Built-in)"
+                else:
+                    status = "✅ Available" if model_info['available'] else "❌ Not configured"
+                status_info += f"**{model_info['name']}:** {status}\n\n"
+            
+            return status_info
         
-        with gr.Row():
-            with gr.Column():
-                mistral_key_input = gr.Textbox(
-                    label="Mistral API Key",
-                    placeholder="Enter your Mistral API key...",
-                    type="password",
-                    info="Required for Mistral Large model"
-                )
-                sambanova_key_input = gr.Textbox(
-                    label="SambaNova API Key", 
-                    placeholder="Enter your SambaNova API key...",
-                    type="password",
-                    info="Required for DeepSeek, Llama, and QwQ models"
-                )
-                
-            with gr.Column():
-                # Add a button to save/update keys
-                save_keys_btn = gr.Button("💾 Save API Keys", variant="secondary")
-                keys_status = gr.Textbox(
-                    label="Keys Status",
-                    value="No API keys configured - using environment variables if available",
-                    interactive=False
-                )
-        
-        # Connect the save button
-        save_keys_btn.click(
-            update_api_keys,
-            inputs=[mistral_key_input, sambanova_key_input],
-            outputs=[keys_status]
-        )
-        
-        model_status_display = gr.Markdown(check_model_status())
-        
-        # Add refresh button for model status
-        refresh_status_btn = gr.Button("🔄 Refresh Model Status")
-        refresh_status_btn.click(
-            check_model_status,
-            outputs=[model_status_display]
-        )
+        gr.Markdown(check_model_status())
         
         gr.Markdown("""
         ## 🛠️ Setup Instructions
         
-        ### 🚀 Quick Start (Recommended)
-        1. **Enter API keys above** (they'll be used for this session)
-        2. **Click "Save API Keys"** 
-        3. **Start a discussion!**
-        
-        ### 🔑 Get API Keys:
-        - **Mistral:** [console.mistral.ai](https://console.mistral.ai)
-        - **SambaNova:** [cloud.sambanova.ai](https://cloud.sambanova.ai)
-        
-        ### 🌐 Alternative: Environment Variables
+        ### Environment Variables Setup:
         ```bash
-        export MISTRAL_API_KEY=your_key_here
-        export SAMBANOVA_API_KEY=your_key_here
-        export MODERATOR_MODEL=mistral
+        MISTRAL_API_KEY=...
+        SAMBANOVA_API_KEY=...
+        MODERATOR_MODEL=mistral
         ```
         
         ### 🦙 Sambanova Integration
-        The platform includes **3 Sambanova models**:
+        The platform now includes **3 Sambanova models**:
         - **DeepSeek-R1**: Advanced reasoning model
         - **Meta-Llama-3.1-8B**: Fast, efficient discussions  
         - **QwQ-32B**: Large-scale consensus analysis
         
-        ### 🔍 Web Search Agent
-        Built-in agent using **smolagents** with:
-        - **DuckDuckGoSearchTool**: Web searches
-        - **VisitWebpageTool**: Deep content analysis
-        - **WikipediaTool**: Comprehensive research
-        - **TinyLlama**: Fast inference for search synthesis
-        
-        ### 📋 Dependencies
-        ```bash
-        pip install gradio requests python-dotenv smolagents gradio-consilium-roundtable wikipedia openai
-        ```
+        All using Sambanova's ultra-fast inference infrastructure!
         
         ### 🔗 MCP Integration
         Add to your Claude Desktop config:
@@ -1000,6 +895,20 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
           }
         }
         ```
+        
+        ### 📋 Dependencies
+        ```bash
+        pip install gradio requests python-dotenv smolagents gradio-consilium-roundtable
+        ```
+        
+        ### 🤖 Search Agent Configuration
+        The Web Search Agent uses **smolagents** with:
+        - **DuckDuckGoSearchTool**: Initial web searches
+        - **VisitWebpageTool**: Deep dive into relevant pages  
+        - **FinalAnswerTool**: Synthesized comprehensive answers
+        - **InferenceClientModel**: Powered by Hugging Face Inference API
+        
+        For optimal search results, ensure you have a stable internet connection.
         """)
     
     with gr.Tab("📚 Usage Examples"):
@@ -1035,32 +944,6 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - 🎯 **Center consensus** = Final decision reached
         
         **The roundtable updates in real-time as the discussion progresses!**
-        
-        ## 🎮 Role Assignments Explained
-        
-        ### 🎭 Balanced (Recommended)
-        - **Devil's Advocate**: Challenges assumptions
-        - **Fact Checker**: Verifies claims and accuracy
-        - **Synthesizer**: Finds common ground
-        - **Standard**: Provides balanced analysis
-        
-        ### 🎓 Specialized
-        - **Domain Expert**: Technical expertise
-        - **Fact Checker**: Accuracy verification
-        - **Creative Thinker**: Innovative solutions
-        - **Synthesizer**: Bridge building
-        
-        ### ⚔️ Adversarial
-        - **Double Devil's Advocate**: Maximum challenge
-        - **Standard**: Balanced counter-perspective
-        
-        ## 🗳️ Decision Protocols
-        
-        - **Consensus**: Seek agreement among all participants
-        - **Majority Voting**: Most popular position wins
-        - **Weighted Voting**: Higher confidence scores matter more
-        - **Ranked Choice**: Preference-based selection
-        - **Unanimity**: All must agree completely
         """)
 
 # Launch configuration
