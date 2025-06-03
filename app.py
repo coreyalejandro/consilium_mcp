@@ -11,16 +11,21 @@ import re
 from collections import Counter
 import threading
 import queue
+import uuid
 from gradio_consilium_roundtable import consilium_roundtable
 from smolagents import CodeAgent, DuckDuckGoSearchTool, FinalAnswerTool, InferenceClientModel, VisitWebpageTool, Tool
 
 # Load environment variables
 load_dotenv()
 
-# API Configuration
+# API Configuration - These will be updated by UI if needed
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY") 
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
+HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN")
 MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
+
+# Session-based storage for isolated discussions
+user_sessions: Dict[str, Dict] = {}
 
 class WikipediaTool(Tool):
     name = "wikipedia_search"
@@ -46,35 +51,32 @@ class WikipediaTool(Tool):
 
 class WebSearchAgent:
     def __init__(self):
-        self.agent = CodeAgent(
-            tools=[
-                DuckDuckGoSearchTool(), 
-                VisitWebpageTool(),
-                WikipediaTool(),
-                FinalAnswerTool()
-            ], 
-            model=InferenceClientModel(),
-            max_steps=5,
-            verbosity_level=1
-        )
+        try:
+            # Use TinyLlama for faster inference
+            self.agent = CodeAgent(
+                tools=[
+                    DuckDuckGoSearchTool(), 
+                    VisitWebpageTool(),
+                    WikipediaTool(),
+                    FinalAnswerTool()
+                ], 
+                model=InferenceClientModel(model_id="TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
+                max_steps=3,
+                verbosity_level=0
+            )
+        except Exception as e:
+            print(f"Warning: Could not initialize search agent: {e}")
+            self.agent = None
     
     def search(self, query: str, max_results: int = 5) -> str:
         """Use the CodeAgent to perform comprehensive web search and analysis"""
+        if not self.agent:
+            return f"🔍 **Web Search for:** {query}\n\nSearch agent not available. Please check dependencies."
+        
         try:
-            # Create a detailed prompt for the agent
-            agent_prompt = f"""You are a web research agent. Please research the following query comprehensively:
-
-"{query}"
-
-Your task:
-1. Search for relevant information using DuckDuckGo or Wikipedia
-2. Visit the most promising web pages to get detailed information
-3. Synthesize the findings into a comprehensive, well-formatted response
-4. Include sources and links where appropriate
-5. Format your response with markdown for better readability
-
-Please provide a thorough analysis based on current, reliable information."""
-
+            # Simplified prompt for TinyLlama
+            agent_prompt = f"Search for information about: {query}"
+            
             # Run the agent
             result = self.agent.run(agent_prompt)
             
@@ -82,44 +84,128 @@ Please provide a thorough analysis based on current, reliable information."""
             if result:
                 return f"🔍 **Web Research Results for:** {query}\n\n{result}"
             else:
-                return f"🔍 **Web Search for:** {query}\n\nNo results found or agent encountered an error."
+                return f"🔍 **Web Search for:** {query}\n\nNo results found."
             
         except Exception as e:
             # Fallback to simple error message
-            return f"🔍 **Web Search Error for:** {query}\n\nError: {str(e)}\n\nThe search agent encountered an issue. Please try again or rephrase your query."
+            return f"🔍 **Web Search Error for:** {query}\n\nError: {str(e)}\n\nPlease try again or rephrase your query."
+
+def get_session_id(request: gr.Request = None) -> str:
+    """Generate or retrieve session ID"""
+    if request and hasattr(request, 'session_hash'):
+        return request.session_hash
+    return str(uuid.uuid4())
+
+def get_or_create_session_state(session_id: str) -> Dict:
+    """Get or create isolated session state"""
+    if session_id not in user_sessions:
+        user_sessions[session_id] = {
+            "roundtable_state": {
+                "participants": [],
+                "messages": [],
+                "currentSpeaker": None,
+                "thinking": [],
+                "showBubbles": []
+            },
+            "discussion_log": [],
+            "final_answer": "",
+            "step_by_step_active": False,
+            "step_continue_event": threading.Event(),
+            "api_keys": {
+                "mistral": None,
+                "sambanova": None,
+                "huggingface": None
+            }
+        }
+    return user_sessions[session_id]
+
+def update_session_api_keys(mistral_key, sambanova_key, huggingface_key, session_id_state, request: gr.Request = None):
+    """Update API keys for THIS SESSION ONLY"""
+    session_id = get_session_id(request) if not session_id_state else session_id_state
+    session = get_or_create_session_state(session_id)
+    
+    status_messages = []
+    
+    # Update keys for THIS SESSION
+    if mistral_key.strip():
+        session["api_keys"]["mistral"] = mistral_key.strip()
+        status_messages.append("✅ Mistral API key saved for this session")
+    elif MISTRAL_API_KEY:  # Fall back to env var
+        session["api_keys"]["mistral"] = MISTRAL_API_KEY
+        status_messages.append("✅ Using Mistral API key from environment")
+    else:
+        status_messages.append("❌ No Mistral API key available")
+        
+    if sambanova_key.strip():
+        session["api_keys"]["sambanova"] = sambanova_key.strip()
+        status_messages.append("✅ SambaNova API key saved for this session")
+    elif SAMBANOVA_API_KEY:
+        session["api_keys"]["sambanova"] = SAMBANOVA_API_KEY
+        status_messages.append("✅ Using SambaNova API key from environment")
+    else:
+        status_messages.append("❌ No SambaNova API key available")
+    
+    if huggingface_key.strip():
+        session["api_keys"]["huggingface"] = huggingface_key.strip()
+        status_messages.append("✅ Hugging Face token saved for this session")
+        # Update environment for search agent
+        os.environ["HUGGINGFACE_API_TOKEN"] = huggingface_key.strip()
+    elif HUGGINGFACE_API_TOKEN:
+        session["api_keys"]["huggingface"] = HUGGINGFACE_API_TOKEN
+        status_messages.append("✅ Using Hugging Face token from environment")
+    else:
+        status_messages.append("❌ No Hugging Face token available")
+    
+    return " | ".join(status_messages), session_id
 
 class VisualConsensusEngine:
-    def __init__(self, moderator_model: str = None, update_callback=None):
+    def __init__(self, moderator_model: str = None, update_callback=None, session_id: str = None):
         self.moderator_model = moderator_model or MODERATOR_MODEL
         self.search_agent = WebSearchAgent()
-        self.update_callback = update_callback  # For real-time updates
+        self.update_callback = update_callback
+        self.session_id = session_id
+        
+        # Get session-specific keys or fall back to global
+        session = get_or_create_session_state(session_id) if session_id else {"api_keys": {}}
+        session_keys = session.get("api_keys", {})
+        
+        mistral_key = session_keys.get("mistral") or MISTRAL_API_KEY
+        sambanova_key = session_keys.get("sambanova") or SAMBANOVA_API_KEY
+        hf_token = session_keys.get("huggingface") or HUGGINGFACE_API_TOKEN
         
         self.models = {
             'mistral': {
                 'name': 'Mistral Large',
-                'api_key': MISTRAL_API_KEY,
-                'available': bool(MISTRAL_API_KEY)
+                'api_key': mistral_key,
+                'available': bool(mistral_key)
             },
             'sambanova_deepseek': {
                 'name': 'DeepSeek-R1',
-                'api_key': SAMBANOVA_API_KEY,
-                'available': bool(SAMBANOVA_API_KEY)
+                'api_key': sambanova_key,
+                'available': bool(sambanova_key)
             },
             'sambanova_llama': {
                 'name': 'Meta-Llama-3.1-8B',
-                'api_key': SAMBANOVA_API_KEY,
-                'available': bool(SAMBANOVA_API_KEY)
+                'api_key': sambanova_key,
+                'available': bool(sambanova_key)
             },
             'sambanova_qwq': {
                 'name': 'QwQ-32B',
-                'api_key': SAMBANOVA_API_KEY,
-                'available': bool(SAMBANOVA_API_KEY)
+                'api_key': sambanova_key,
+                'available': bool(sambanova_key)
             },
             'search': {
                 'name': 'Web Search Agent',
                 'api_key': True,
                 'available': True
             }
+        }
+        
+        # Store session keys for API calls
+        self.session_keys = {
+            'mistral': mistral_key,
+            'sambanova': sambanova_key,
+            'huggingface': hf_token
         }
         
         # Role definitions
@@ -133,12 +219,12 @@ class VisualConsensusEngine:
         }
     
     def update_visual_state(self, state_update: Dict[str, Any]):
-        """Update the visual roundtable state"""
+        """Update the visual roundtable state for this session"""
         if self.update_callback:
             self.update_callback(state_update)
     
     def call_model(self, model: str, prompt: str, context: str = "") -> Optional[str]:
-        """Generic model calling function"""
+        """Generic model calling function using session-specific keys"""
         if model == 'search':
             search_query = self._extract_search_query(prompt)
             return self.search_agent.search(search_query)
@@ -171,7 +257,8 @@ class VisualConsensusEngine:
         return prompt[:100]
     
     def _call_sambanova(self, model: str, prompt: str) -> Optional[str]:
-        if not SAMBANOVA_API_KEY:
+        api_key = self.session_keys.get('sambanova')
+        if not api_key:
             return None
             
         try:
@@ -179,7 +266,7 @@ class VisualConsensusEngine:
             
             client = OpenAI(
                 base_url="https://api.sambanova.ai/v1", 
-                api_key=SAMBANOVA_API_KEY
+                api_key=api_key
             )
             
             model_mapping = {
@@ -206,7 +293,8 @@ class VisualConsensusEngine:
             return None
     
     def _call_mistral(self, prompt: str) -> Optional[str]:
-        if not MISTRAL_API_KEY:
+        api_key = self.session_keys.get('mistral')
+        if not api_key:
             return None
             
         try:
@@ -214,7 +302,7 @@ class VisualConsensusEngine:
             
             client = OpenAI(
                 base_url="https://api.mistral.ai/v1", 
-                api_key=MISTRAL_API_KEY
+                api_key=api_key
             )
             
             completion = client.chat.completions.create(
@@ -264,11 +352,11 @@ class VisualConsensusEngine:
                 pass
         return 5.0
     
-    def run_visual_consensus(self, question: str, discussion_rounds: int = 3, 
-                           decision_protocol: str = "consensus", role_assignment: str = "balanced",
-                           topology: str = "full_mesh", moderator_model: str = "mistral",
-                           enable_step_by_step: bool = False):
-        """Run consensus with visual updates"""
+    def run_visual_consensus_session(self, question: str, discussion_rounds: int = 3, 
+                                   decision_protocol: str = "consensus", role_assignment: str = "balanced",
+                                   topology: str = "full_mesh", moderator_model: str = "mistral",
+                                   enable_step_by_step: bool = False, log_function=None):
+        """Run consensus with session-isolated visual updates"""
         
         available_models = [model for model, info in self.models.items() if info['available']]
         if not available_models:
@@ -277,9 +365,14 @@ class VisualConsensusEngine:
         model_roles = self.assign_roles(available_models, role_assignment)
         participant_names = [self.models[model]['name'] for model in available_models]
         
+        # Use session-specific logging
+        def log_event(event_type: str, speaker: str = "", content: str = "", **kwargs):
+            if log_function:
+                log_function(event_type, speaker, content, **kwargs)
+        
         # Log the start
-        log_discussion_event('phase', content=f"🚀 Starting Discussion: {question}")
-        log_discussion_event('phase', content=f"📊 Configuration: {len(available_models)} models, {decision_protocol} protocol, {role_assignment} roles")
+        log_event('phase', content=f"🚀 Starting Discussion: {question}")
+        log_event('phase', content=f"📊 Configuration: {len(available_models)} models, {decision_protocol} protocol, {role_assignment} roles")
         
         # Initialize visual state
         self.update_visual_state({
@@ -293,11 +386,11 @@ class VisualConsensusEngine:
         all_messages = []
         
         # Phase 1: Initial responses
-        log_discussion_event('phase', content="📝 Phase 1: Initial Responses")
+        log_event('phase', content="📝 Phase 1: Initial Responses")
         
         for model in available_models:
             # Log and set thinking state
-            log_discussion_event('thinking', speaker=self.models[model]['name'])
+            log_event('thinking', speaker=self.models[model]['name'])
             self.update_visual_state({
                 "participants": participant_names,
                 "messages": all_messages,
@@ -305,7 +398,6 @@ class VisualConsensusEngine:
                 "thinking": [self.models[model]['name']]
             })
             
-            # No pause before thinking - let AI think immediately
             if not enable_step_by_step:
                 time.sleep(1)
             
@@ -325,7 +417,7 @@ Your response should include:
 4. END YOUR RESPONSE WITH: "Confidence: X/10" where X is your confidence level"""
 
             # Log and set speaking state
-            log_discussion_event('speaking', speaker=self.models[model]['name'])
+            log_event('speaking', speaker=self.models[model]['name'])
             self.update_visual_state({
                 "participants": participant_names,
                 "messages": all_messages,
@@ -333,7 +425,6 @@ Your response should include:
                 "thinking": []
             })
             
-            # No pause before speaking - let AI respond immediately
             if not enable_step_by_step:
                 time.sleep(2)
             
@@ -343,20 +434,20 @@ Your response should include:
                 confidence = self._extract_confidence(response)
                 message = {
                     "speaker": self.models[model]['name'],
-                    "text": response,  # CHANGE: Don't truncate the response
+                    "text": response,
                     "confidence": confidence,
                     "role": role
                 }
                 all_messages.append(message)
                 
                 # Log the full response
-                log_discussion_event('message', 
-                                   speaker=self.models[model]['name'], 
-                                   content=response,
-                                   role=role,
-                                   confidence=confidence)
+                log_event('message', 
+                         speaker=self.models[model]['name'], 
+                         content=response,
+                         role=role,
+                         confidence=confidence)
                 
-                # Update with new message - add to showBubbles so bubble stays visible
+                # Update with new message
                 responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker")))
                 
                 self.update_visual_state({
@@ -364,26 +455,25 @@ Your response should include:
                     "messages": all_messages,
                     "currentSpeaker": None,
                     "thinking": [],
-                    "showBubbles": responded_speakers  # Keep bubbles visible for all who responded
+                    "showBubbles": responded_speakers
                 })
                 
-                # PAUSE AFTER AI RESPONSE - this is when user can read the response
                 if enable_step_by_step:
-                    step_continue_event.clear()
-                    step_continue_event.wait()  # Wait for user to click Next Step
+                    session = get_or_create_session_state(self.session_id)
+                    session["step_continue_event"].clear()
+                    session["step_continue_event"].wait()
                 else:
                     time.sleep(0.5)
         
         # Phase 2: Discussion rounds
         if discussion_rounds > 0:
-            log_discussion_event('phase', content=f"💬 Phase 2: Discussion Rounds ({discussion_rounds} rounds)")
+            log_event('phase', content=f"💬 Phase 2: Discussion Rounds ({discussion_rounds} rounds)")
             
             for round_num in range(discussion_rounds):
-                log_discussion_event('phase', content=f"🔄 Discussion Round {round_num + 1}")
+                log_event('phase', content=f"🔄 Discussion Round {round_num + 1}")
                 
                 for model in available_models:
-                    # Log and set thinking state
-                    log_discussion_event('thinking', speaker=self.models[model]['name'])
+                    log_event('thinking', speaker=self.models[model]['name'])
                     self.update_visual_state({
                         "participants": participant_names,
                         "messages": all_messages,
@@ -391,7 +481,6 @@ Your response should include:
                         "thinking": [self.models[model]['name']]
                     })
                     
-                    # No pause before thinking
                     if not enable_step_by_step:
                         time.sleep(1)
                     
@@ -411,8 +500,7 @@ Other models' current responses:
 Please provide your updated analysis considering the discussion so far.
 END WITH: "Confidence: X/10" """
 
-                    # Log and set speaking state
-                    log_discussion_event('speaking', speaker=self.models[model]['name'])
+                    log_event('speaking', speaker=self.models[model]['name'])
                     self.update_visual_state({
                         "participants": participant_names,
                         "messages": all_messages,
@@ -420,7 +508,6 @@ END WITH: "Confidence: X/10" """
                         "thinking": []
                     })
                     
-                    # No pause before speaking
                     if not enable_step_by_step:
                         time.sleep(2)
                     
@@ -430,20 +517,18 @@ END WITH: "Confidence: X/10" """
                         confidence = self._extract_confidence(response)
                         message = {
                             "speaker": self.models[model]['name'],
-                            "text": f"Round {round_num + 1}: {response}",  # CHANGE: Don't truncate
+                            "text": f"Round {round_num + 1}: {response}",
                             "confidence": confidence,
                             "role": model_roles[model]
                         }
                         all_messages.append(message)
                         
-                        # Log the full response
-                        log_discussion_event('message', 
-                                           speaker=self.models[model]['name'], 
-                                           content=f"Round {round_num + 1}: {response}",
-                                           role=model_roles[model],
-                                           confidence=confidence)
+                        log_event('message', 
+                                 speaker=self.models[model]['name'], 
+                                 content=f"Round {round_num + 1}: {response}",
+                                 role=model_roles[model],
+                                 confidence=confidence)
                         
-                        # Update with new message - add to showBubbles so bubble stays visible
                         responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker")))
                         
                         self.update_visual_state({
@@ -451,46 +536,45 @@ END WITH: "Confidence: X/10" """
                             "messages": all_messages,
                             "currentSpeaker": None,
                             "thinking": [],
-                            "showBubbles": responded_speakers  # Keep bubbles visible for all who responded
+                            "showBubbles": responded_speakers
                         })
                         
-                        # PAUSE AFTER AI RESPONSE for step-by-step mode
                         if enable_step_by_step:
-                            step_continue_event.clear()
-                            step_continue_event.wait()
+                            session = get_or_create_session_state(self.session_id)
+                            session["step_continue_event"].clear()
+                            session["step_continue_event"].wait()
                         else:
                             time.sleep(1)
         
-        # Phase 3: Final consensus - ACTUALLY GENERATE THE CONSENSUS
-        log_discussion_event('phase', content=f"🎯 Phase 3: Final Consensus ({decision_protocol})")
-        log_discussion_event('thinking', speaker="All participants", content="Building consensus...")
+        # Phase 3: Final consensus
+        log_event('phase', content=f"🎯 Phase 3: Final Consensus ({decision_protocol})")
+        log_event('thinking', speaker="All participants", content="Building consensus...")
         
         self.update_visual_state({
             "participants": participant_names,
             "messages": all_messages,
             "currentSpeaker": None,
-            "thinking": participant_names  # Everyone thinking about consensus
+            "thinking": participant_names
         })
         
-        # No pause before consensus generation
         if not enable_step_by_step:
             time.sleep(2)
         
-        # ACTUALLY GENERATE THE FINAL CONSENSUS ANSWER
+        # Generate consensus
         moderator = self.moderator_model if self.models[self.moderator_model]['available'] else available_models[0]
         
-        # Collect all the actual responses for synthesis
+        # Collect responses from session log
+        session = get_or_create_session_state(self.session_id)
         all_responses = ""
         confidence_scores = []
-        for entry in discussion_log:
+        for entry in session["discussion_log"]:
             if entry['type'] == 'message' and entry['speaker'] != 'Consilium':
                 all_responses += f"\n**{entry['speaker']}**: {entry['content']}\n"
                 if 'confidence' in entry:
                     confidence_scores.append(entry['confidence'])
         
-        # Calculate average confidence to assess consensus likelihood
         avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 5.0
-        consensus_threshold = 7.0  # If average confidence is below this, flag potential disagreement
+        consensus_threshold = 7.0
         
         consensus_prompt = f"""You are synthesizing the final result from this AI discussion.
 
@@ -516,7 +600,7 @@ Format your response as:
 
 **AREAS OF DISAGREEMENT:** [If any - explain the key points of contention]"""
 
-        log_discussion_event('speaking', speaker="Consilium", content="Analyzing consensus and synthesizing final answer...")
+        log_event('speaking', speaker="Consilium", content="Analyzing consensus and synthesizing final answer...")
         self.update_visual_state({
             "participants": participant_names,
             "messages": all_messages,
@@ -524,7 +608,6 @@ Format your response as:
             "thinking": []
         })
         
-        # Generate the actual consensus analysis
         consensus_result = self.call_model(moderator, consensus_prompt)
         
         if not consensus_result:
@@ -534,10 +617,8 @@ Format your response as:
 
 **AREAS OF DISAGREEMENT:** Analysis could not be completed due to technical issues."""
         
-        # Check if consensus was actually reached based on the response
         consensus_reached = "CONSENSUS STATUS: Reached" in consensus_result or avg_confidence >= consensus_threshold
         
-        # Generate final consensus message for visual
         if consensus_reached:
             visual_summary = "✅ Consensus reached!"
         elif "Partial" in consensus_result:
@@ -547,18 +628,17 @@ Format your response as:
         
         final_message = {
             "speaker": "Consilium",
-            "text": f"{visual_summary} {consensus_result}",  # CHANGE: Don't truncate consensus
+            "text": f"{visual_summary} {consensus_result}",
             "confidence": avg_confidence,
             "role": "consensus"
         }
         all_messages.append(final_message)
         
-        log_discussion_event('message', 
-                           speaker="Consilium", 
-                           content=consensus_result,
-                           confidence=avg_confidence)
+        log_event('message', 
+                 speaker="Consilium", 
+                 content=consensus_result,
+                 confidence=avg_confidence)
         
-        # Final state - show bubbles for all who responded
         responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker")))
         
         self.update_visual_state({
@@ -569,54 +649,60 @@ Format your response as:
             "showBubbles": responded_speakers
         })
         
-        log_discussion_event('phase', content="✅ Discussion Complete")
+        log_event('phase', content="✅ Discussion Complete")
         
-        return consensus_result  # Return the actual analysis, including disagreements
+        return consensus_result
 
-# Global state for the visual component
-current_roundtable_state = {
-    "participants": [],
-    "messages": [],
-    "currentSpeaker": None,
-    "thinking": [],
-    "showBubbles": []
-}
+def update_session_roundtable_state(session_id: str, new_state: Dict):
+    """Update roundtable state for specific session"""
+    session = get_or_create_session_state(session_id)
+    session["roundtable_state"].update(new_state)
+    return json.dumps(session["roundtable_state"])
 
-def update_roundtable_state(new_state):
-    """Update the global roundtable state"""
-    global current_roundtable_state
-    current_roundtable_state.update(new_state)
-    return json.dumps(current_roundtable_state)
-
-# Global variables for step-by-step control
-step_pause_queue = queue.Queue()
-step_continue_event = threading.Event()
-
-def run_consensus_discussion(question: str, discussion_rounds: int = 3, 
-                           decision_protocol: str = "consensus", role_assignment: str = "balanced",
-                           topology: str = "full_mesh", moderator_model: str = "mistral",
-                           enable_step_by_step: bool = False):
-    """Main function that returns both text log and updates visual state"""
+def run_consensus_discussion_session(question: str, discussion_rounds: int = 3, 
+                                   decision_protocol: str = "consensus", role_assignment: str = "balanced",
+                                   topology: str = "full_mesh", moderator_model: str = "mistral",
+                                   enable_step_by_step: bool = False, session_id_state: str = None,
+                                   request: gr.Request = None):
+    """Session-isolated consensus discussion"""
     
-    global discussion_log, final_answer, step_by_step_active, step_continue_event
-    discussion_log = []  # Reset log
-    final_answer = ""
-    step_by_step_active = enable_step_by_step
-    step_continue_event.clear()
+    # Get unique session
+    session_id = get_session_id(request) if not session_id_state else session_id_state
+    session = get_or_create_session_state(session_id)
     
-    def visual_update_callback(state_update):
-        """Callback to update visual state during discussion"""
-        update_roundtable_state(state_update)
+    # Reset session state for new discussion
+    session["discussion_log"] = []
+    session["final_answer"] = ""
+    session["step_by_step_active"] = enable_step_by_step
+    session["step_continue_event"].clear()
     
-    engine = VisualConsensusEngine(moderator_model, visual_update_callback)
-    result = engine.run_visual_consensus(
+    def session_visual_update_callback(state_update):
+        """Session-specific visual update callback"""
+        update_session_roundtable_state(session_id, state_update)
+    
+    def session_log_event(event_type: str, speaker: str = "", content: str = "", **kwargs):
+        """Add event to THIS session's log only"""
+        session["discussion_log"].append({
+            'type': event_type,
+            'speaker': speaker,
+            'content': content,
+            'timestamp': datetime.now().strftime('%H:%M:%S'),
+            **kwargs
+        })
+    
+    # Create engine with session-specific callback
+    engine = VisualConsensusEngine(moderator_model, session_visual_update_callback, session_id)
+    
+    # Run consensus with session-specific logging
+    result = engine.run_visual_consensus_session(
         question, discussion_rounds, decision_protocol, 
-        role_assignment, topology, moderator_model, enable_step_by_step
+        role_assignment, topology, moderator_model, 
+        enable_step_by_step, session_log_event
     )
     
-    # Generate final answer summary  
+    # Generate session-specific final answer
     available_models = [model for model, info in engine.models.items() if info['available']]
-    final_answer = f"""## 🎯 Final Consensus Answer
+    session["final_answer"] = f"""## 🎯 Final Consensus Answer
 
 {result}
 
@@ -627,45 +713,23 @@ def run_consensus_discussion(question: str, discussion_rounds: int = 3,
 - **Protocol:** {decision_protocol.replace('_', ' ').title()}
 - **Participants:** {len(available_models)} AI models
 - **Roles:** {role_assignment.title()}
-- **Communication:** {topology.replace('_', ' ').title()}
-- **Rounds:** {discussion_rounds}
+- **Session ID:** {session_id[:8]}...
 
 *Generated by Consilium Visual AI Consensus Platform*"""
     
-    step_by_step_active = False  # Reset after discussion
+    session["step_by_step_active"] = False
     
-    # Return ONLY status for the status field, not the full result
-    status_text = "✅ Discussion Complete - See results below"
-    return status_text, json.dumps(current_roundtable_state), final_answer, format_discussion_log()
+    # Format session-specific discussion log
+    formatted_log = format_session_discussion_log(session["discussion_log"])
+    
+    return ("✅ Discussion Complete - See results below", 
+            json.dumps(session["roundtable_state"]), 
+            session["final_answer"], 
+            formatted_log,
+            session_id)
 
-def continue_step():
-    """Function called by the Next Step button"""
-    global step_continue_event
-    step_continue_event.set()
-    return "✅ Continuing... Next AI will respond shortly"
-
-# Global variables for step-by-step control
-discussion_log = []
-final_answer = ""
-step_by_step_active = False
-current_step_data = {}
-step_callback = None
-
-def set_step_callback(callback):
-    """Set the callback for step-by-step mode"""
-    global step_callback
-    step_callback = callback
-
-def wait_for_next_step():
-    """Wait for user to click 'Next Step' button in step-by-step mode"""
-    global step_by_step_active
-    if step_by_step_active and step_callback:
-        # Return control to UI - the next step button will continue
-        return True
-    return False
-
-def format_discussion_log():
-    """Format the complete discussion log for display"""
+def format_session_discussion_log(discussion_log: list) -> str:
+    """Format discussion log for specific session"""
     if not discussion_log:
         return "No discussion log available yet."
     
@@ -689,16 +753,46 @@ def format_discussion_log():
     
     return formatted_log
 
-def log_discussion_event(event_type: str, speaker: str = "", content: str = "", **kwargs):
-    """Add an event to the discussion log"""
-    global discussion_log
-    discussion_log.append({
-        'type': event_type,
-        'speaker': speaker,
-        'content': content,
-        'timestamp': datetime.now().strftime('%H:%M:%S'),
-        **kwargs
-    })
+def continue_step_session(session_id_state: str):
+    """Function called by the Next Step button for specific session"""
+    if session_id_state and session_id_state in user_sessions:
+        session = user_sessions[session_id_state]
+        session["step_continue_event"].set()
+        return "✅ Continuing... Next AI will respond shortly"
+    return "❌ Session not found"
+
+def check_model_status_session(session_id_state: str = None, request: gr.Request = None):
+    """Check and display current model availability for specific session"""
+    session_id = get_session_id(request) if not session_id_state else session_id_state
+    session = get_or_create_session_state(session_id)
+    session_keys = session.get("api_keys", {})
+    
+    # Get session-specific keys or fall back to env vars
+    mistral_key = session_keys.get("mistral") or MISTRAL_API_KEY
+    sambanova_key = session_keys.get("sambanova") or SAMBANOVA_API_KEY
+    hf_token = session_keys.get("huggingface") or HUGGINGFACE_API_TOKEN
+    
+    status_info = "## 🔍 Model Availability Status\n\n"
+    
+    models = {
+        'Mistral Large': mistral_key,
+        'DeepSeek-R1': sambanova_key,
+        'Meta-Llama-3.1-8B': sambanova_key,
+        'QwQ-32B': sambanova_key,
+        'Web Search Agent': True
+    }
+    
+    for model_name, available in models.items():
+        if model_name == 'Web Search Agent':
+            status = "✅ Available (Built-in)"
+        else:
+            if available:
+                status = f"✅ Available (Key: {available[:8]}...)"
+            else:
+                status = "❌ Not configured"
+        status_info += f"**{model_name}:** {status}\n\n"
+    
+    return status_info
 
 # Create the hybrid interface
 with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.themes.Soft()) as demo:
@@ -714,9 +808,13 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
     - 🌐 **Communication Topologies** - Full mesh, star, ring patterns
     - 🗳️ **Decision Protocols** - Consensus, voting, weighted, ranked choice
     - 🔍 **Web Search Integration** - Real-time information gathering
+    - 🔒 **Session Isolation** - Each user gets their own private discussion space
     
     **Perfect for:** Complex decisions, research analysis, creative brainstorming, problem-solving
     """)
+    
+    # Hidden session state component
+    session_state = gr.State()
     
     with gr.Tab("🎭 Visual Consensus Discussion"):
         with gr.Row():
@@ -777,7 +875,13 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                 # The visual roundtable component
                 roundtable = consilium_roundtable(
                     label="🎭 AI Consensus Roundtable",
-                    value=json.dumps(current_roundtable_state)
+                    value=json.dumps({
+                        "participants": [],
+                        "messages": [],
+                        "currentSpeaker": None,
+                        "thinking": [],
+                        "showBubbles": []
+                    })
                 )
         
         # Final answer section
@@ -796,28 +900,33 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         # Event handlers
         def on_start_discussion(*args):
             # Start discussion immediately for both modes
-            enable_step = args[-1]  # Last argument is enable_step_by_step
+            enable_step = args[-2]  # Second to last argument is enable_step_by_step
+            request = args[-1]      # Last argument is request
             
             if enable_step:
                 # Step-by-step mode: Start discussion in background thread
                 def run_discussion():
-                    run_consensus_discussion(*args)
+                    run_consensus_discussion_session(*args)
                 
                 discussion_thread = threading.Thread(target=run_discussion)
                 discussion_thread.daemon = True
                 discussion_thread.start()
                 
+                # Get session ID for this user
+                session_id = get_session_id(request)
+                
                 return (
                     "🎬 Step-by-step mode: Discussion started - will pause after each AI response",
-                    json.dumps(current_roundtable_state),
+                    json.dumps(get_or_create_session_state(session_id)["roundtable_state"]),
                     "*Discussion starting in step-by-step mode...*",
                     "*Discussion log will appear here...*",
                     gr.update(visible=True),  # Show next step button
-                    gr.update(visible=True, value="Discussion running - will pause after first AI response")  # Show step status
+                    gr.update(visible=True, value="Discussion running - will pause after first AI response"),  # Show step status
+                    session_id
                 )
             else:
                 # Normal mode - start immediately and hide step controls
-                result = run_consensus_discussion(*args)
+                result = run_consensus_discussion_session(*args)
                 return result + (gr.update(visible=False), gr.update(visible=False))
         
         # Function to toggle step controls visibility
@@ -836,52 +945,122 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         
         start_btn.click(
             on_start_discussion,
-            inputs=[question_input, rounds_input, decision_protocol, role_assignment, topology, moderator_model, enable_clickthrough],
-            outputs=[status_output, roundtable, final_answer_output, discussion_log_output, next_step_btn, step_status]
+            inputs=[question_input, rounds_input, decision_protocol, role_assignment, topology, moderator_model, enable_clickthrough, session_state],
+            outputs=[status_output, roundtable, final_answer_output, discussion_log_output, next_step_btn, step_status, session_state]
         )
         
         # Next step button handler
         next_step_btn.click(
-            continue_step,
+            continue_step_session,
+            inputs=[session_state],
             outputs=[step_status]
         )
         
         # Auto-refresh the roundtable state every 2 seconds during discussion
-        gr.Timer(2).tick(lambda: json.dumps(current_roundtable_state), outputs=[roundtable])
+        def refresh_roundtable(session_id_state, request: gr.Request = None):
+            session_id = get_session_id(request) if not session_id_state else session_id_state
+            if session_id in user_sessions:
+                return json.dumps(user_sessions[session_id]["roundtable_state"])
+            return json.dumps({
+                "participants": [],
+                "messages": [],
+                "currentSpeaker": None,
+                "thinking": [],
+                "showBubbles": []
+            })
+        
+        gr.Timer(2).tick(refresh_roundtable, inputs=[session_state], outputs=[roundtable])
     
     with gr.Tab("🔧 Configuration & Setup"):
-        def check_model_status():
-            engine = VisualConsensusEngine()
-            status_info = "## 🔍 Model Availability Status\n\n"
-            
-            for model_id, model_info in engine.models.items():
-                if model_id == 'search':
-                    status = "✅ Available (Built-in)"
-                else:
-                    status = "✅ Available" if model_info['available'] else "❌ Not configured"
-                status_info += f"**{model_info['name']}:** {status}\n\n"
-            
-            return status_info
+        gr.Markdown("## 🔑 API Keys Configuration")
+        gr.Markdown("*Enter your API keys below OR set them as environment variables*")
+        gr.Markdown("**🔒 Privacy:** Your API keys are stored only for your session and are not shared with other users.")
         
-        gr.Markdown(check_model_status())
+        with gr.Row():
+            with gr.Column():
+                mistral_key_input = gr.Textbox(
+                    label="Mistral API Key",
+                    placeholder="Enter your Mistral API key...",
+                    type="password",
+                    info="Required for Mistral Large model"
+                )
+                sambanova_key_input = gr.Textbox(
+                    label="SambaNova API Key", 
+                    placeholder="Enter your SambaNova API key...",
+                    type="password",
+                    info="Required for DeepSeek, Llama, and QwQ models"
+                )
+                huggingface_key_input = gr.Textbox(
+                    label="Hugging Face API Token",
+                    placeholder="Enter your Hugging Face API token...",
+                    type="password",
+                    info="Required for Web Search Agent (TinyLlama)"
+                )
+                
+            with gr.Column():
+                # Add a button to save/update keys
+                save_keys_btn = gr.Button("💾 Save API Keys", variant="secondary")
+                keys_status = gr.Textbox(
+                    label="Keys Status",
+                    value="No API keys configured - using environment variables if available",
+                    interactive=False
+                )
+        
+        # Connect the save button
+        save_keys_btn.click(
+            update_session_api_keys,
+            inputs=[mistral_key_input, sambanova_key_input, huggingface_key_input, session_state],
+            outputs=[keys_status, session_state]
+        )
+        
+        model_status_display = gr.Markdown(check_model_status_session())
+        
+        # Add refresh button for model status
+        refresh_status_btn = gr.Button("🔄 Refresh Model Status")
+        refresh_status_btn.click(
+            check_model_status_session,
+            inputs=[session_state],
+            outputs=[model_status_display]
+        )
         
         gr.Markdown("""
         ## 🛠️ Setup Instructions
         
-        ### Environment Variables Setup:
+        ### 🚀 Quick Start (Recommended)
+        1. **Enter API keys above** (they'll be used only for your session)
+        2. **Click "Save API Keys"** 
+        3. **Start a discussion!**
+        
+        ### 🔑 Get API Keys:
+        - **Mistral:** [console.mistral.ai](https://console.mistral.ai)
+        - **SambaNova:** [cloud.sambanova.ai](https://cloud.sambanova.ai)
+        - **Hugging Face:** [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+        
+        ### 🌐 Alternative: Environment Variables
         ```bash
-        MISTRAL_API_KEY=...
-        SAMBANOVA_API_KEY=...
-        MODERATOR_MODEL=mistral
+        export MISTRAL_API_KEY=your_key_here
+        export SAMBANOVA_API_KEY=your_key_here
+        export HUGGINGFACE_API_TOKEN=your_token_here
+        export MODERATOR_MODEL=mistral
         ```
         
         ### 🦙 Sambanova Integration
-        The platform now includes **3 Sambanova models**:
+        The platform includes **3 Sambanova models**:
         - **DeepSeek-R1**: Advanced reasoning model
         - **Meta-Llama-3.1-8B**: Fast, efficient discussions  
         - **QwQ-32B**: Large-scale consensus analysis
         
-        All using Sambanova's ultra-fast inference infrastructure!
+        ### 🔍 Web Search Agent
+        Built-in agent using **smolagents** with:
+        - **DuckDuckGoSearchTool**: Web searches
+        - **VisitWebpageTool**: Deep content analysis
+        - **WikipediaTool**: Comprehensive research
+        - **TinyLlama**: Fast inference for search synthesis
+        
+        ### 📋 Dependencies
+        ```bash
+        pip install gradio requests python-dotenv smolagents gradio-consilium-roundtable wikipedia openai
+        ```
         
         ### 🔗 MCP Integration
         Add to your Claude Desktop config:
@@ -896,19 +1075,11 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         }
         ```
         
-        ### 📋 Dependencies
-        ```bash
-        pip install gradio requests python-dotenv smolagents gradio-consilium-roundtable
-        ```
-        
-        ### 🤖 Search Agent Configuration
-        The Web Search Agent uses **smolagents** with:
-        - **DuckDuckGoSearchTool**: Initial web searches
-        - **VisitWebpageTool**: Deep dive into relevant pages  
-        - **FinalAnswerTool**: Synthesized comprehensive answers
-        - **InferenceClientModel**: Powered by Hugging Face Inference API
-        
-        For optimal search results, ensure you have a stable internet connection.
+        ### 🔒 Privacy & Security
+        - **Session Isolation**: Each user gets their own private discussion space
+        - **API Key Protection**: Keys are stored only in your browser session
+        - **No Global State**: Your discussions are not visible to other users
+        - **Secure Communication**: All API calls use HTTPS encryption
         """)
     
     with gr.Tab("📚 Usage Examples"):
@@ -944,6 +1115,42 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - 🎯 **Center consensus** = Final decision reached
         
         **The roundtable updates in real-time as the discussion progresses!**
+        
+        ## 🎮 Role Assignments Explained
+        
+        ### 🎭 Balanced (Recommended)
+        - **Devil's Advocate**: Challenges assumptions
+        - **Fact Checker**: Verifies claims and accuracy
+        - **Synthesizer**: Finds common ground
+        - **Standard**: Provides balanced analysis
+        
+        ### 🎓 Specialized
+        - **Domain Expert**: Technical expertise
+        - **Fact Checker**: Accuracy verification
+        - **Creative Thinker**: Innovative solutions
+        - **Synthesizer**: Bridge building
+        
+        ### ⚔️ Adversarial
+        - **Double Devil's Advocate**: Maximum challenge
+        - **Standard**: Balanced counter-perspective
+        
+        ## 🗳️ Decision Protocols
+        
+        - **Consensus**: Seek agreement among all participants
+        - **Majority Voting**: Most popular position wins
+        - **Weighted Voting**: Higher confidence scores matter more
+        - **Ranked Choice**: Preference-based selection
+        - **Unanimity**: All must agree completely
+        
+        ## 🔒 Session Isolation
+        
+        **Each user gets their own private space:**
+        - ✅ Your discussions are private to you
+        - ✅ Your API keys are not shared
+        - ✅ Your conversation history is isolated
+        - ✅ Multiple users can use the platform simultaneously
+        
+        **Perfect for teams, research groups, and individual use!**
         """)
 
 # Launch configuration
