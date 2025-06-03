@@ -21,7 +21,6 @@ load_dotenv()
 # API Configuration - These will be updated by UI if needed
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY") 
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
-HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN")
 MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
 
 # Session-based storage for isolated discussions
@@ -60,7 +59,7 @@ class WebSearchAgent:
                     WikipediaTool(),
                     FinalAnswerTool()
                 ], 
-                model=InferenceClientModel(model_id="TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
+                model=InferenceClientModel(),
                 max_steps=3,
                 verbosity_level=0
             )
@@ -145,17 +144,6 @@ def update_session_api_keys(mistral_key, sambanova_key, huggingface_key, session
     else:
         status_messages.append("❌ No SambaNova API key available")
     
-    if huggingface_key.strip():
-        session["api_keys"]["huggingface"] = huggingface_key.strip()
-        status_messages.append("✅ Hugging Face token saved for this session")
-        # Update environment for search agent
-        os.environ["HUGGINGFACE_API_TOKEN"] = huggingface_key.strip()
-    elif HUGGINGFACE_API_TOKEN:
-        session["api_keys"]["huggingface"] = HUGGINGFACE_API_TOKEN
-        status_messages.append("✅ Using Hugging Face token from environment")
-    else:
-        status_messages.append("❌ No Hugging Face token available")
-    
     return " | ".join(status_messages), session_id
 
 class VisualConsensusEngine:
@@ -171,7 +159,6 @@ class VisualConsensusEngine:
         
         mistral_key = session_keys.get("mistral") or MISTRAL_API_KEY
         sambanova_key = session_keys.get("sambanova") or SAMBANOVA_API_KEY
-        hf_token = session_keys.get("huggingface") or HUGGINGFACE_API_TOKEN
         
         self.models = {
             'mistral': {
@@ -770,7 +757,6 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
     # Get session-specific keys or fall back to env vars
     mistral_key = session_keys.get("mistral") or MISTRAL_API_KEY
     sambanova_key = session_keys.get("sambanova") or SAMBANOVA_API_KEY
-    hf_token = session_keys.get("huggingface") or HUGGINGFACE_API_TOKEN
     
     status_info = "## 🔍 Model Availability Status\n\n"
     
@@ -1040,7 +1026,6 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         ```bash
         export MISTRAL_API_KEY=your_key_here
         export SAMBANOVA_API_KEY=your_key_here
-        export HUGGINGFACE_API_TOKEN=your_token_here
         export MODERATOR_MODEL=mistral
         ```
         
