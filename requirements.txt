@@ -1,0 +1,10 @@
+gradio>=5.0.0
+gradio[mcp]
+smolagents
+markdownify
+requests
+python-dotenv
+duckduckgo-search
+wikipedia-api
+gradio-consilium-roundtable
+openai
