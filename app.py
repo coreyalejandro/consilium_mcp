@@ -93,27 +93,30 @@ class VisualConsensusEngine:
         self.moderator_model = moderator_model or MODERATOR_MODEL
         self.search_agent = WebSearchAgent()
         self.update_callback = update_callback  # For real-time updates
+
+        mistral_key = os.getenv("MISTRAL_API_KEY")
+        sambanova_key = os.getenv("SAMBANOVA_API_KEY")
         
         self.models = {
             'mistral': {
                 'name': 'Mistral Large',
-                'api_key': MISTRAL_API_KEY,
-                'available': bool(MISTRAL_API_KEY)
+                'api_key': mistral_key,
+                'available': bool(mistral_key)
             },
             'sambanova_deepseek': {
                 'name': 'DeepSeek-R1',
-                'api_key': SAMBANOVA_API_KEY,
-                'available': bool(SAMBANOVA_API_KEY)
+                'api_key': sambanova_key,
+                'available': bool(sambanova_key)
             },
             'sambanova_llama': {
                 'name': 'Meta-Llama-3.1-8B',
-                'api_key': SAMBANOVA_API_KEY,
-                'available': bool(SAMBANOVA_API_KEY)
+                'api_key': sambanova_key,
+                'available': bool(sambanova_key)
             },
             'sambanova_qwq': {
                 'name': 'QwQ-32B',
-                'api_key': SAMBANOVA_API_KEY,
-                'available': bool(SAMBANOVA_API_KEY)
+                'api_key': sambanova_key,
+                'available': bool(sambanova_key)
             },
             'search': {
                 'name': 'Web Search Agent',
@@ -852,6 +855,10 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
     with gr.Tab("🔧 Configuration & Setup"):
         def check_model_status():
             engine = VisualConsensusEngine()
+            
+            mistral_key = os.getenv("MISTRAL_API_KEY")
+            sambanova_key = os.getenv("SAMBANOVA_API_KEY")
+
             status_info = "## 🔍 Model Availability Status\n\n"
             
             for model_id, model_info in engine.models.items():
