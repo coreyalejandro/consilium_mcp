@@ -976,12 +976,6 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                     type="password",
                     info="Required for DeepSeek, Llama, and QwQ models"
                 )
-                huggingface_key_input = gr.Textbox(
-                    label="Hugging Face API Token",
-                    placeholder="Enter your Hugging Face API token...",
-                    type="password",
-                    info="Required for Web Search Agent (TinyLlama)"
-                )
                 
             with gr.Column():
                 # Add a button to save/update keys
@@ -1020,7 +1014,6 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         ### 🔑 Get API Keys:
         - **Mistral:** [console.mistral.ai](https://console.mistral.ai)
         - **SambaNova:** [cloud.sambanova.ai](https://cloud.sambanova.ai)
-        - **Hugging Face:** [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
         
         ### 🌐 Alternative: Environment Variables
         ```bash
