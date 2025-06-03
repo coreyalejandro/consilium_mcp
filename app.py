@@ -951,7 +951,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                 "showBubbles": []
             })
         
-        gr.Timer(2).tick(refresh_roundtable, inputs=[session_state], outputs=[roundtable])
+        gr.Timer(0.5).tick(refresh_roundtable, inputs=[session_state], outputs=[roundtable])
     
     with gr.Tab("🔧 Configuration & Setup"):
         gr.Markdown("## 🔑 API Keys Configuration")
@@ -1129,6 +1129,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
 
 # Launch configuration
 if __name__ == "__main__":
+    demo.queue(concurrency_count=10) 
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
