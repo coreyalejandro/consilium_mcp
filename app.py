@@ -1129,7 +1129,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
 
 # Launch configuration
 if __name__ == "__main__":
-    demo.queue(concurrency_count=10) 
+    demo.queue(default_concurrency_limit=10) 
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
