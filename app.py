@@ -112,13 +112,12 @@ def get_or_create_session_state(session_id: str) -> Dict:
             "step_continue_event": threading.Event(),
             "api_keys": {
                 "mistral": None,
-                "sambanova": None,
-                "huggingface": None
+                "sambanova": None
             }
         }
     return user_sessions[session_id]
 
-def update_session_api_keys(mistral_key, sambanova_key, huggingface_key, session_id_state, request: gr.Request = None):
+def update_session_api_keys(mistral_key, sambanova_key, session_id_state, request: gr.Request = None):
     """Update API keys for THIS SESSION ONLY"""
     session_id = get_session_id(request) if not session_id_state else session_id_state
     session = get_or_create_session_state(session_id)
@@ -191,8 +190,7 @@ class VisualConsensusEngine:
         # Store session keys for API calls
         self.session_keys = {
             'mistral': mistral_key,
-            'sambanova': sambanova_key,
-            'huggingface': hf_token
+            'sambanova': sambanova_key
         }
         
         # Role definitions
@@ -989,7 +987,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         # Connect the save button
         save_keys_btn.click(
             update_session_api_keys,
-            inputs=[mistral_key_input, sambanova_key_input, huggingface_key_input, session_state],
+            inputs=[mistral_key_input, sambanova_key_input, session_state],
             outputs=[keys_status, session_state]
         )
         
