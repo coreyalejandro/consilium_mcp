@@ -882,15 +882,13 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
             )
         
         # Event handlers
-        def on_start_discussion(*args):
+        def on_start_discussion(question, rounds, protocol, roles, topology, moderator, enable_step, session_id_state, request: gr.Request = None):
             # Start discussion immediately for both modes
-            enable_step = args[-2]  # Second to last argument is enable_step_by_step
-            request = args[-1]      # Last argument is request
             
             if enable_step:
                 # Step-by-step mode: Start discussion in background thread
                 def run_discussion():
-                    run_consensus_discussion_session(*args)
+                    run_consensus_discussion_session(question, rounds, protocol, roles, topology, moderator, enable_step, session_id_state, request)
                 
                 discussion_thread = threading.Thread(target=run_discussion)
                 discussion_thread.daemon = True
@@ -910,7 +908,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                 )
             else:
                 # Normal mode - start immediately and hide step controls
-                result = run_consensus_discussion_session(*args)
+                result = run_consensus_discussion_session(question, rounds, protocol, roles, topology, moderator, enable_step, session_id_state, request)
                 return result + (gr.update(visible=False), gr.update(visible=False))
         
         # Function to toggle step controls visibility
