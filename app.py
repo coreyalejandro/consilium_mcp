@@ -337,6 +337,47 @@ class VisualConsensusEngine:
                 pass
         return 5.0
     
+    # FIXED: Proper conversation context building based on topology
+    def build_conversation_context(self, all_messages: List[Dict], current_model: str, question: str, round_num: int, topology: str = "full_mesh") -> str:
+        """Build proper conversation context based on topology"""
+        
+        current_model_name = self.models[current_model]['name']
+        
+        if topology == "full_mesh":
+            # Everyone sees everyone's responses (except their own)
+            context = f"ORIGINAL QUESTION: {question}\n\nCONVERSATION SO FAR:\n"
+            
+            for msg in all_messages:
+                if msg["speaker"] != current_model_name:  # Don't include own messages in context
+                    context += f"\n**{msg['speaker']}** ({msg.get('role', 'standard')}):\n{msg['text']}\n"
+                    if 'confidence' in msg:
+                        context += f"*Confidence: {msg['confidence']}/10*\n"
+            
+        elif topology == "star":
+            # Only see moderator and own previous responses
+            context = f"ORIGINAL QUESTION: {question}\n\nRELEVANT RESPONSES:\n"
+            moderator_name = self.models[self.moderator_model]['name']
+            
+            for msg in all_messages:
+                if msg["speaker"] == moderator_name:
+                    context += f"\n**{msg['speaker']} (Moderator)**:\n{msg['text']}\n"
+        
+        elif topology == "ring":
+            # Only see previous model in the ring
+            context = f"ORIGINAL QUESTION: {question}\n\nPREVIOUS RESPONSE:\n"
+            available_models = [model for model, info in self.models.items() if info['available']]
+            current_idx = available_models.index(current_model)
+            prev_idx = (current_idx - 1) % len(available_models)
+            prev_model_name = self.models[available_models[prev_idx]]['name']
+            
+            # Get the most recent message from the previous model
+            for msg in reversed(all_messages):
+                if msg["speaker"] == prev_model_name:
+                    context += f"\n**{msg['speaker']}**:\n{msg['text']}\n"
+                    break
+        
+        return context
+    
     def run_visual_consensus_session(self, question: str, discussion_rounds: int = 3, 
                                    decision_protocol: str = "consensus", role_assignment: str = "balanced",
                                    topology: str = "full_mesh", moderator_model: str = "mistral",
@@ -357,7 +398,7 @@ class VisualConsensusEngine:
         
         # Log the start
         log_event('phase', content=f"🚀 Starting Discussion: {question}")
-        log_event('phase', content=f"📊 Configuration: {len(available_models)} models, {decision_protocol} protocol, {role_assignment} roles")
+        log_event('phase', content=f"📊 Configuration: {len(available_models)} models, {decision_protocol} protocol, {role_assignment} roles, {topology} topology")
         
         # Initialize visual state
         self.update_visual_state({
@@ -469,20 +510,23 @@ Your response should include:
                     if not enable_step_by_step:
                         time.sleep(1)
                     
-                    # Create context of other responses
-                    other_responses = ""
-                    for other_model in available_models:
-                        if other_model != model:
-                            other_responses += f"\n**{self.models[other_model]['name']}**: [Previous response]\n"
+                    # FIXED: Build proper conversation context based on topology
+                    conversation_context = self.build_conversation_context(all_messages, model, question, round_num + 1, topology)
                     
-                    discussion_prompt = f"""CONTINUING DISCUSSION FOR: {question}
+                    role = model_roles[model]
+                    role_context = self.roles[role]
+                    
+                    discussion_prompt = f"""{role_context}
 
-Round {round_num + 1} of {discussion_rounds}
+{conversation_context}
 
-Other models' current responses:
-{other_responses}
+ROUND {round_num + 1} of {discussion_rounds}
 
-Please provide your updated analysis considering the discussion so far.
+Please provide your updated analysis considering the discussion so far. 
+- Address any points raised by other participants
+- Refine or adjust your position based on new information
+- Maintain your assigned role perspective
+
 END WITH: "Confidence: X/10" """
 
                     log_event('speaking', speaker=self.models[model]['name'])
@@ -531,7 +575,7 @@ END WITH: "Confidence: X/10" """
                         else:
                             time.sleep(1)
         
-        # Phase 3: Final consensus
+        # Phase 3: Final consensus - IMPROVED WITH PROPER ANALYSIS
         log_event('phase', content=f"🎯 Phase 3: Final Consensus ({decision_protocol})")
         log_event('thinking', speaker="All participants", content="Building consensus...")
         
@@ -545,45 +589,69 @@ END WITH: "Confidence: X/10" """
         if not enable_step_by_step:
             time.sleep(2)
         
-        # Generate consensus
+        # Generate consensus with proper conversation analysis
         moderator = self.moderator_model if self.models[self.moderator_model]['available'] else available_models[0]
         
-        # Collect responses from session log
-        session = get_or_create_session_state(self.session_id)
-        all_responses = ""
+        # FIXED: Group messages by speaker for better analysis
+        speaker_positions = {}
         confidence_scores = []
-        for entry in session["discussion_log"]:
-            if entry['type'] == 'message' and entry['speaker'] != 'Consilium':
-                all_responses += f"\n**{entry['speaker']}**: {entry['content']}\n"
-                if 'confidence' in entry:
-                    confidence_scores.append(entry['confidence'])
+        
+        for msg in all_messages:
+            speaker = msg["speaker"]
+            if speaker not in speaker_positions:
+                speaker_positions[speaker] = []
+            speaker_positions[speaker].append(msg)
+            if 'confidence' in msg:
+                confidence_scores.append(msg['confidence'])
+        
+        # Build comprehensive context for consensus
+        all_responses = f"ORIGINAL QUESTION: {question}\n\nTOPOLOGY: {topology}\nDECISION PROTOCOL: {decision_protocol}\n\n"
+        
+        for speaker, messages in speaker_positions.items():
+            if speaker != 'Consilium':  # Skip previous consensus attempts
+                all_responses += f"\n{'='*50}\n**{speaker}** (Role: {messages[0].get('role', 'standard')}):\n\n"
+                for i, msg in enumerate(messages):
+                    if i == 0:
+                        all_responses += f"Initial Response: {msg['text']}\n\n"
+                    else:
+                        all_responses += f"Round {i}: {msg['text']}\n\n"
+                
+                if messages[-1].get('confidence'):
+                    all_responses += f"Final Confidence: {messages[-1]['confidence']}/10\n"
         
         avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 5.0
-        consensus_threshold = 7.0
         
-        consensus_prompt = f"""You are synthesizing the final result from this AI discussion.
+        consensus_prompt = f"""You are synthesizing the final result from this multi-AI discussion.
 
-ORIGINAL QUESTION: {question}
-
-ALL PARTICIPANT RESPONSES:
 {all_responses}
 
+ANALYSIS REQUIREMENTS:
+1. Identify areas where AIs agree vs disagree
+2. Assess the quality and strength of arguments presented
+3. Note any evolution in positions across discussion rounds
+4. Determine if genuine consensus was reached based on the {decision_protocol} protocol
+
 AVERAGE CONFIDENCE LEVEL: {avg_confidence:.1f}/10
+CONSENSUS THRESHOLD: 7.0/10
 
 Your task:
-1. Analyze if the participants reached genuine consensus or if there are significant disagreements
-2. If there IS consensus: Provide a comprehensive final answer incorporating all insights
-3. If there is NO consensus: Clearly state the disagreements and present the main conflicting positions
-4. If partially aligned: Identify areas of agreement and areas of disagreement
+- Analyze if the participants reached genuine consensus or if there are significant disagreements
+- If there IS consensus: Provide a comprehensive final answer incorporating all insights
+- If there is NO consensus: Clearly state the disagreements and present the main conflicting positions
+- If partially aligned: Identify areas of agreement and areas of disagreement
 
 Be honest about the level of consensus achieved. Do not force agreement where none exists.
 
 Format your response as:
 **CONSENSUS STATUS:** [Reached/Partial/Not Reached]
 
-**FINAL ANSWER:** [Your synthesis]
+**FINAL ANSWER:** [Your comprehensive synthesis]
 
-**AREAS OF DISAGREEMENT:** [If any - explain the key points of contention]"""
+**AREAS OF AGREEMENT:** [Points where participants aligned]
+
+**REMAINING DISAGREEMENTS:** [If any - explain the key points of contention]
+
+**CONFIDENCE ASSESSMENT:** [Analysis of certainty levels and reliability]"""
 
         log_event('speaking', speaker="Consilium", content="Analyzing consensus and synthesizing final answer...")
         self.update_visual_state({
@@ -602,7 +670,7 @@ Format your response as:
 
 **AREAS OF DISAGREEMENT:** Analysis could not be completed due to technical issues."""
         
-        consensus_reached = "CONSENSUS STATUS: Reached" in consensus_result or avg_confidence >= consensus_threshold
+        consensus_reached = "CONSENSUS STATUS:** Reached" in consensus_result or avg_confidence >= 7.0
         
         if consensus_reached:
             visual_summary = "✅ Consensus reached!"
@@ -696,6 +764,7 @@ def run_consensus_discussion_session(question: str, discussion_rounds: int = 3,
 ### 📊 Discussion Summary
 - **Question:** {question}
 - **Protocol:** {decision_protocol.replace('_', ' ').title()}
+- **Topology:** {topology.replace('_', ' ').title()}
 - **Participants:** {len(available_models)} AI models
 - **Roles:** {role_assignment.title()}
 - **Session ID:** {session_id[:8]}...
@@ -763,11 +832,11 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
         'DeepSeek-R1': sambanova_key,
         'Meta-Llama-3.1-8B': sambanova_key,
         'QwQ-32B': sambanova_key,
-        'Web Search Agent': True
+        'Search': True
     }
     
     for model_name, available in models.items():
-        if model_name == 'Web Search Agent':
+        if model_name == 'Search':
             status = "✅ Available (Built-in)"
         else:
             if available:
@@ -827,7 +896,8 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                     topology = gr.Dropdown(
                         choices=["full_mesh", "star", "ring"],
                         value="full_mesh",
-                        label="🌐 Communication Pattern"
+                        label="🌐 Communication Pattern",
+                        info="Full mesh: all see all, Star: only moderator, Ring: chain communication"
                     )
                     
                     moderator_model = gr.Dropdown(
@@ -938,7 +1008,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
             outputs=[step_status]
         )
         
-        # Auto-refresh the roundtable state every 2 seconds during discussion
+        # Auto-refresh the roundtable state every 0.5 seconds during discussion
         def refresh_roundtable(session_id_state, request: gr.Request = None):
             session_id = get_session_id(request) if not session_id_state else session_id_state
             if session_id in user_sessions:
@@ -1115,6 +1185,23 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - **Weighted Voting**: Higher confidence scores matter more
         - **Ranked Choice**: Preference-based selection
         - **Unanimity**: All must agree completely
+        
+        ## 🌐 Communication Topologies (NOW IMPLEMENTED!)
+        
+        ### 🕸️ **Full Mesh** (Default)
+        - Every AI sees responses from ALL other AIs
+        - Maximum information sharing
+        - Best for comprehensive consensus
+        
+        ### ⭐ **Star** 
+        - AIs only see the moderator's responses
+        - Centralized communication pattern
+        - Good for controlled discussions
+        
+        ### 🔄 **Ring**
+        - Each AI only sees the previous AI's response
+        - Sequential information flow
+        - Interesting for building on ideas
         
         ## 🔒 Session Isolation
         
