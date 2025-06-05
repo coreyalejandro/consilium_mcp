@@ -1549,18 +1549,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
     with gr.Tab("📚 Usage Guide"):
         gr.Markdown("""
         ## 🎯 How to Get Expert AI Analysis with Live Research
-        
-        ### 🚀 **NEW: Native Research Integration**
-        
-        **Watch Expert AIs automatically call for research:**
-        - 🤔 Expert analyzes your question
-        - 🔍 Expert decides: "I need current data on this topic"
-        - ⚡ Research Agent springs into action automatically
-        - 📊 Expert continues with fresh research integrated
-        - 💡 More informed, data-driven expert recommendations
-        
-        **No manual prompting needed - AIs naturally request information!**
-        
+                        
         ### 🏆 **Professional Decision Questions**
         
         #### **💼 Business & Strategy**
@@ -1591,7 +1580,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - "Will lab-grown meat replace traditional agriculture?"
         - "Should we trust AI with medical decision-making?"
         
-        ### 🎓 **Expert Role Assignments**
+        ## 🎓 **Expert Role Assignments**
         
         #### **⚖️ Balanced (Recommended for Most Decisions)**
         - **Expert Advocate**: Passionate defender with compelling evidence
@@ -1662,124 +1651,6 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - Creates interesting chains of reasoning and idea evolution
         - Can lead to surprising consensus emergence
         - **Use when:** You want to see how ideas build and evolve
-        
-        ## 🔍 **Research Integration in Action**
-        
-        ### **🎪 What You'll See:**
-        
-        1. **🤔 Expert Thinking**: Orange pulsing as expert analyzes
-        2. **🔍 Research Request**: Expert decides they need current data
-        3. **⚡ Research Agent Activation**: Research Agent springs to life
-        4. **💬 Research Activity**: "Researching for Mistral: carbon capture technology trends"
-        5. **📊 Data Integration**: Expert continues with fresh research
-        6. **✨ Enhanced Analysis**: More informed, evidence-based recommendations
-        
-        ### **🔬 Types of Research Calls:**
-        
-        - **Current Market Data**: "Latest trends in renewable energy investment"
-        - **Technical Specifications**: "Performance comparison of database architectures"
-        - **Policy Information**: "Recent climate change legislation updates"
-        - **Scientific Research**: "Latest findings on AI alignment approaches"
-        - **Background Knowledge**: "Comprehensive overview of nuclear energy safety"
-        
-        ## 💡 **Pro Tips for Best Results**
-        
-        ### 🎯 **Question Design for Research Integration**
-        1. **Include time sensitivity** - "Current best practices for...", "Latest developments in..."
-        2. **Reference specific domains** - "Enterprise software", "Climate technology", "AI safety"
-        3. **Mention data needs** - "Market analysis", "Performance comparison", "Research findings"
-        4. **Set research context** - "Based on current evidence...", "With latest data..."
-        
-        ### 🎓 **Role Strategy with Research**
-        1. **Research Specialist + Function Calls** = Authoritative, data-backed analysis
-        2. **Strategic Advisor + Current Data** = Practical, market-informed recommendations
-        3. **Critical Analyst + Latest Research** = Evidence-based risk assessment
-        4. **Innovation Catalyst + Trend Data** = Forward-looking, informed disruption
-        
-        ### ⚖️ **Protocol Selection for Research-Heavy Decisions**
-        1. **Consensus with Research**: Build agreement on shared data foundation
-        2. **Weighted Voting with Research**: Let data quality and expertise determine influence
-        3. **Majority with Current Data**: Competitive analysis with latest information
-        4. **Ranked Choice with Research**: Systematic evaluation of options with current data
-        
-        ### 🔄 **Discussion Rounds with Research**
-        1. **Round 1**: Initial analysis + automatic research calls
-        2. **Round 2**: Debate with shared research foundation
-        3. **Round 3+**: Refined positions with additional targeted research
-        
-        ## 🎪 **The Enhanced Visual Experience**
-        
-        **Watch for these enhanced expert indicators:**
-        - 🤔 **Orange pulsing** = Expert analyzing the question
-        - 🔍 **Research Request** = Expert calling for information
-        - ⚡ **Research Agent Active** = Gathering data automatically
-        - ✨ **Gold glowing** = Expert presenting research-enhanced analysis
-        - 💬 **Enhanced speech bubbles** = Data-driven insights and recommendations
-        - 📊 **Center synthesis** = Research-informed expert consensus
-        
-        **The roundtable now shows real AI research collaboration in action!**
-        
-        ## 🏆 **Competition-Winning Technical Features**
-        
-        ### **🛠️ Professional-Grade Implementation:**
-        - **Native OpenAI Function Calling**: Industry-standard API patterns
-        - **Clean Architecture**: No text parsing, proper error handling
-        - **Type Safety**: Function parameters with validation
-        - **Future-Proof**: Standard patterns, easily extensible
-        
-        ### **🎨 Visual Innovation:**
-        - **Real-Time Research**: See AIs collaborating with research agent
-        - **Seamless Integration**: Research appears naturally in conversation
-        - **Professional UX**: Visual feedback for all research activity
-        - **Responsive Design**: Smooth transitions and state management
-        
-        ### **🚀 Modern AI Workflows:**
-        - **Natural AI Behavior**: AIs decide when they need information
-        - **Autonomous Research**: No manual prompting required
-        - **Multi-Source Integration**: Web search + Wikipedia + expert analysis
-        - **Research Quality**: Authoritative sources with proper attribution
-        
-        ## 🔒 **Enhanced Private Expert Sessions**
-        
-        **Each user gets their own isolated expert panel with research:**
-        - ✅ Your decisions and research are private and secure
-        - ✅ Your API keys enable your personal research capabilities
-        - ✅ Your analysis history includes all research activity
-        - ✅ Multiple users can run research-enhanced analyses simultaneously
-        
-        **Perfect for teams, consultants, researchers, and strategic planning with live data!**
-        
-        ---
-        
-        ## 🎯 **Getting Started with Research-Enhanced Analysis**
-        
-        1. **Choose a data-sensitive decision question** - Include current trends, market data, or recent developments
-        2. **Select your decision protocol** - Consider research-friendly options like weighted voting
-        3. **Pick expert roles** that benefit from research - Research specialists, strategic advisors
-        4. **Start the analysis** and watch experts automatically call for research
-        5. **Review enhanced results** with current data integration
-        6. **Implement data-driven recommendations** with confidence
-        
-        **Ready to make better decisions with expert AI analysis + live research?** 🚀
-        
-        ### **🔬 Research Integration Examples:**
-        
-        **Business Question**: "Should we adopt microservices architecture?"
-        - 🔍 Expert calls: "Current microservices adoption trends enterprise software"
-        - 📊 Gets latest market data and implementation studies
-        - 💡 Provides informed recommendation based on current evidence
-        
-        **Technical Question**: "What's the best approach to carbon capture?"
-        - 🔍 Expert calls: "Latest carbon capture technology developments 2025"
-        - 📊 Gets current research and performance data
-        - 💡 Recommends based on cutting-edge scientific findings
-        
-        **Policy Question**: "Should we prioritize nuclear energy?"
-        - 🔍 Expert calls: "Nuclear energy safety statistics climate goals"
-        - 📊 Gets current policy data and safety records
-        - 💡 Makes evidence-based policy recommendation
-        
-        **The future of AI decision-making is here - intelligent, research-enhanced, collaborative analysis!**
         """)
 
 # Launch configuration
