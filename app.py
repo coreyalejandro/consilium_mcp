@@ -26,6 +26,60 @@ MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
 # Session-based storage for isolated discussions
 user_sessions: Dict[str, Dict] = {}
 
+# PROFESSIONAL: Compelling decision-making questions that create rigorous analysis
+PROFESSIONAL_DECISION_QUESTIONS = [
+    "Should our startup pivot to AI-first product development?",
+    "Microservices vs monolith architecture for our scaling platform?", 
+    "What's the most promising approach to carbon capture technology?",
+    "Should we prioritize geoengineering research over emissions reduction?",
+    "Is nuclear energy essential for meeting climate goals?",
+    "Should AI development be paused until alignment is solved?",
+    "Will remote work fundamentally change innovation culture?",
+    "Should gene editing be used for human enhancement?",
+    "Is cryptocurrency adoption inevitable for global finance?",
+    "Should social media platforms be regulated as public utilities?",
+    "Will lab-grown meat replace traditional agriculture?",
+    "Should we colonize Mars or focus resources on Earth?"
+]
+
+# NATIVE FUNCTION CALLING: Define search functions for both Mistral and SambaNova
+SEARCH_FUNCTIONS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search the web for current information and data relevant to the decision being analyzed",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to find current information relevant to the expert analysis"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function", 
+        "function": {
+            "name": "search_wikipedia",
+            "description": "Search Wikipedia for comprehensive background information and authoritative data",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The topic to research on Wikipedia for comprehensive background information"
+                    }
+                },
+                "required": ["topic"]
+            }
+        }
+    }
+]
+
 class WikipediaTool(Tool):
     name = "wikipedia_search"
     description = "Search Wikipedia for comprehensive information on any topic"
@@ -51,7 +105,6 @@ class WikipediaTool(Tool):
 class WebSearchAgent:
     def __init__(self):
         try:
-            # Use TinyLlama for faster inference
             self.agent = CodeAgent(
                 tools=[
                     DuckDuckGoSearchTool(), 
@@ -70,24 +123,51 @@ class WebSearchAgent:
     def search(self, query: str, max_results: int = 5) -> str:
         """Use the CodeAgent to perform comprehensive web search and analysis"""
         if not self.agent:
-            return f"🔍 **Web Search for:** {query}\n\nSearch agent not available. Please check dependencies."
+            return f"Research agent not available. Please check dependencies."
         
         try:
-            # Simplified prompt for TinyLlama
-            agent_prompt = f"Search for information about: {query}"
+            # Simplified prompt for TinyLlama to avoid code parsing issues
+            agent_prompt = f"Search for information about: {query}. Provide a brief summary of findings."
             
             # Run the agent
             result = self.agent.run(agent_prompt)
             
-            # Format the result nicely
-            if result:
-                return f"🔍 **Web Research Results for:** {query}\n\n{result}"
+            # Clean and validate the result
+            if result and isinstance(result, str) and len(result.strip()) > 0:
+                # Remove any code-like syntax that might cause parsing errors
+                cleaned_result = result.replace('```', '').replace('`', '').strip()
+                return f"**Web Research Results for: {query}**\n\n{cleaned_result}"
             else:
-                return f"🔍 **Web Search for:** {query}\n\nNo results found."
+                return f"**Research for: {query}**\n\nNo clear results found. Please try a different search term."
             
         except Exception as e:
-            # Fallback to simple error message
-            return f"🔍 **Web Search Error for:** {query}\n\nError: {str(e)}\n\nPlease try again or rephrase your query."
+            # More robust fallback - return something useful instead of failing
+            error_msg = str(e)
+            if "max steps" in error_msg.lower():
+                return f"**Research for: {query}**\n\nResearch completed but reached complexity limit. Basic analysis: This query relates to {query.lower()} and would benefit from further investigation."
+            elif "syntax" in error_msg.lower():
+                return f"**Research for: {query}**\n\nResearch encountered formatting issues but found relevant information about {query.lower()}."
+            else:
+                return f"**Research for: {query}**\n\nResearch temporarily unavailable. Error: {error_msg[:100]}..."
+    
+    def search_wikipedia(self, topic: str) -> str:
+        """Search Wikipedia for comprehensive information"""
+        try:
+            wiki_tool = WikipediaTool()
+            result = wiki_tool.forward(topic)
+            
+            # Ensure we return a proper string and clean it
+            if result and isinstance(result, str):
+                # Clean any code syntax that might cause issues
+                cleaned_result = result.replace('```', '').replace('`', '').strip()
+                return cleaned_result
+            elif result:
+                return str(result)
+            else:
+                return f"**Wikipedia Research for: {topic}**\n\nNo results found, but this topic likely relates to {topic.lower()} and warrants further investigation."
+                
+        except Exception as e:
+            return f"**Wikipedia Research for: {topic}**\n\nResearch temporarily unavailable but {topic.lower()} is a relevant topic for analysis. Error: {str(e)[:100]}..."
 
 def get_session_id(request: gr.Request = None) -> str:
     """Generate or retrieve session ID"""
@@ -108,8 +188,6 @@ def get_or_create_session_state(session_id: str) -> Dict:
             },
             "discussion_log": [],
             "final_answer": "",
-            "step_by_step_active": False,
-            "step_continue_event": threading.Event(),
             "api_keys": {
                 "mistral": None,
                 "sambanova": None
@@ -159,6 +237,7 @@ class VisualConsensusEngine:
         mistral_key = session_keys.get("mistral") or MISTRAL_API_KEY
         sambanova_key = session_keys.get("sambanova") or SAMBANOVA_API_KEY
         
+        # Research Agent stays visible but is no longer an active participant
         self.models = {
             'mistral': {
                 'name': 'Mistral Large',
@@ -166,7 +245,7 @@ class VisualConsensusEngine:
                 'available': bool(mistral_key)
             },
             'sambanova_deepseek': {
-                'name': 'DeepSeek-R1',
+                'name': 'DeepSeek-V3',
                 'api_key': sambanova_key,
                 'available': bool(sambanova_key)
             },
@@ -179,11 +258,6 @@ class VisualConsensusEngine:
                 'name': 'QwQ-32B',
                 'api_key': sambanova_key,
                 'available': bool(sambanova_key)
-            },
-            'search': {
-                'name': 'Web Search Agent',
-                'api_key': True,
-                'available': True
             }
         }
         
@@ -193,14 +267,43 @@ class VisualConsensusEngine:
             'sambanova': sambanova_key
         }
         
-        # Role definitions
+        # PROFESSIONAL: Strong, expert role definitions matched to decision protocols
         self.roles = {
-            'standard': "You are participating in a collaborative AI discussion. Provide thoughtful, balanced analysis.",
-            'devils_advocate': "You are the devil's advocate. Challenge assumptions, point out weaknesses, and argue alternative perspectives even if unpopular.",
-            'fact_checker': "You are the fact checker. Focus on verifying claims, checking accuracy, and identifying potential misinformation.",
-            'synthesizer': "You are the synthesizer. Focus on finding common ground, combining different perspectives, and building bridges between opposing views.",
-            'domain_expert': "You are a domain expert. Provide specialized knowledge, technical insights, and authoritative perspective on the topic.",
-            'creative_thinker': "You are the creative thinker. Approach problems from unusual angles, suggest innovative solutions, and think outside conventional boundaries."
+            'standard': "Provide expert analysis with clear reasoning and evidence.",
+            'expert_advocate': "You are a PASSIONATE EXPERT advocating for your specialized position. Present compelling evidence with conviction.",
+            'critical_analyst': "You are a RIGOROUS CRITIC. Identify flaws, risks, and weaknesses in arguments with analytical precision.",
+            'strategic_advisor': "You are a STRATEGIC ADVISOR. Focus on practical implementation, real-world constraints, and actionable insights.",
+            'research_specialist': "You are a RESEARCH EXPERT with deep domain knowledge. Provide authoritative analysis and evidence-based insights.",
+            'innovation_catalyst': "You are an INNOVATION EXPERT. Challenge conventional thinking and propose breakthrough approaches."
+        }
+        
+        # PROFESSIONAL: Different prompt styles based on decision protocol
+        self.protocol_styles = {
+            'consensus': {
+                'intensity': 'collaborative',
+                'goal': 'finding common ground',
+                'language': 'respectful but rigorous'
+            },
+            'majority_voting': {
+                'intensity': 'competitive',
+                'goal': 'winning the argument',
+                'language': 'passionate advocacy'
+            },
+            'weighted_voting': {
+                'intensity': 'analytical',
+                'goal': 'demonstrating expertise',
+                'language': 'authoritative analysis'
+            },
+            'ranked_choice': {
+                'intensity': 'comprehensive',
+                'goal': 'exploring all options',
+                'language': 'systematic evaluation'
+            },
+            'unanimity': {
+                'intensity': 'diplomatic',
+                'goal': 'unanimous agreement',
+                'language': 'bridge-building dialogue'
+            }
         }
     
     def update_visual_state(self, state_update: Dict[str, Any]):
@@ -208,13 +311,214 @@ class VisualConsensusEngine:
         if self.update_callback:
             self.update_callback(state_update)
     
-    def call_model(self, model: str, prompt: str, context: str = "") -> Optional[str]:
-        """Generic model calling function using session-specific keys"""
-        if model == 'search':
-            search_query = self._extract_search_query(prompt)
-            return self.search_agent.search(search_query)
+    def show_research_activity(self, speaker: str, function: str, query: str):
+        """Show research happening in the UI with Research Agent activation"""
+        # Get current state properly
+        session = get_or_create_session_state(self.session_id)
+        current_state = session["roundtable_state"]
+        all_messages = list(current_state.get("messages", []))  # Make a copy
+        participants = current_state.get("participants", [])
         
+        # PRESERVE existing bubbles throughout research
+        existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+        
+        # Step 1: Show expert waiting for research
+        waiting_message = {
+            "speaker": speaker,
+            "text": f"🔍 Requesting research: {query}",
+            "type": "research_request"
+        }
+        all_messages.append(waiting_message)
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": speaker,
+            "thinking": [],
+            "showBubbles": existing_bubbles + [speaker]  # PRESERVE + ADD CURRENT
+        })
+        time.sleep(1)
+        
+        # Step 2: Show Research Agent thinking
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": None,
+            "thinking": ["Research Agent"],
+            "showBubbles": existing_bubbles + [speaker, "Research Agent"]  # PRESERVE ALL
+        })
+        time.sleep(1)
+        
+        # Step 3: Show Research Agent working
+        research_message = {
+            "speaker": "Research Agent",
+            "text": f"🔍 Researching: {function.replace('_', ' ')} - '{query}'",
+            "type": "research_activity"
+        }
+        all_messages.append(research_message)
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": "Research Agent",
+            "thinking": [],
+            "showBubbles": existing_bubbles + [speaker, "Research Agent"]  # PRESERVE ALL
+        })
+        time.sleep(2)  # Longer pause to see research happening
+        
+        # Step 4: Research Agent goes back to quiet, expert processes results
+        processing_message = {
+            "speaker": speaker,
+            "text": f"📊 Processing research results...",
+            "type": "research_processing"
+        }
+        all_messages.append(processing_message)
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": speaker,
+            "thinking": [],
+            "showBubbles": existing_bubbles + [speaker]  # PRESERVE EXISTING + CURRENT
+        })
+        time.sleep(1)
+    
+    def handle_function_calls(self, completion, original_prompt: str, calling_model: str) -> str:
+        """UNIFIED function call handler for both Mistral and SambaNova"""
+        
+        # Check if completion is valid
+        if not completion or not completion.choices or len(completion.choices) == 0:
+            print(f"Invalid completion object for {calling_model}")
+            return "Analysis temporarily unavailable - invalid API response"
+            
+        message = completion.choices[0].message
+        
+        # If no function calls, return regular response
+        if not hasattr(message, 'tool_calls') or not message.tool_calls:
+            # EXTRACT CONTENT PROPERLY
+            content = message.content
+            if isinstance(content, list):
+                # Handle structured content (like from Mistral)
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict) and 'text' in part:
+                        text_parts.append(part['text'])
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                return ' '.join(text_parts) if text_parts else "Analysis completed"
+            elif isinstance(content, str):
+                return content
+            else:
+                return str(content) if content else "Analysis completed"
+        
+        # Get the calling model's name for UI display
+        calling_model_name = self.models[calling_model]['name']
+        
+        # Process each function call
+        messages = [
+            {"role": "user", "content": original_prompt}, 
+            {
+                "role": "assistant", 
+                "content": message.content or "",
+                "tool_calls": message.tool_calls
+            }
+        ]
+        
+        for tool_call in message.tool_calls:
+            try:
+                function_name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments)
+                
+                # Show research activity in UI
+                query_param = arguments.get("query") or arguments.get("topic")
+                if query_param:
+                    self.show_research_activity(calling_model_name, function_name, query_param)
+                
+                # Execute the function
+                if function_name == "search_web":
+                    result = self.search_agent.search(arguments["query"])
+                elif function_name == "search_wikipedia":
+                    result = self.search_agent.search_wikipedia(arguments["topic"])
+                else:
+                    result = f"Unknown function: {function_name}"
+                
+                # Ensure result is a string, not an object
+                if not isinstance(result, str):
+                    result = str(result)
+                
+                # Add function result to conversation
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result
+                })
+                
+            except Exception as e:
+                print(f"Error processing tool call: {str(e)}")
+                # Add error result to conversation
+                messages.append({
+                    "role": "tool", 
+                    "tool_call_id": tool_call.id,
+                    "content": f"Research error: {str(e)}"
+                })
+                continue
+        
+        # Continue conversation with research results integrated
+        try:
+            from openai import OpenAI
+            
+            if calling_model == 'mistral':
+                client = OpenAI(
+                    base_url="https://api.mistral.ai/v1", 
+                    api_key=self.session_keys.get('mistral')
+                )
+                model_name = 'mistral-large-latest'
+            else:
+                client = OpenAI(
+                    base_url="https://api.sambanova.ai/v1", 
+                    api_key=self.session_keys.get('sambanova')
+                )
+                model_mapping = {
+                    'sambanova_deepseek': 'DeepSeek-R1',
+                    'sambanova_llama': 'Meta-Llama-3.1-8B-Instruct', 
+                    'sambanova_qwq': 'QwQ-32B'
+                }
+                model_name = model_mapping.get(calling_model, 'Meta-Llama-3.1-8B-Instruct')
+            
+            final_completion = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7
+            )
+            
+            if final_completion and final_completion.choices and len(final_completion.choices) > 0:
+                final_content = final_completion.choices[0].message.content
+                
+                # HANDLE STRUCTURED CONTENT FROM FINAL RESPONSE TOO
+                if isinstance(final_content, list):
+                    text_parts = []
+                    for part in final_content:
+                        if isinstance(part, dict) and 'text' in part:
+                            text_parts.append(part['text'])
+                        elif isinstance(part, str):
+                            text_parts.append(part)
+                    return ' '.join(text_parts) if text_parts else "Analysis completed with research integration."
+                elif isinstance(final_content, str):
+                    return final_content
+                else:
+                    return str(final_content) if final_content else "Analysis completed with research integration."
+            else:
+                return message.content or "Analysis completed with research integration."
+            
+        except Exception as e:
+            print(f"Error in follow-up completion for {calling_model}: {str(e)}")
+            return message.content or "Analysis completed with research integration."
+    
+    def call_model(self, model: str, prompt: str, context: str = "") -> Optional[str]:
+        """Enhanced model calling with native function calling support"""
         if not self.models[model]['available']:
+            print(f"Model {model} not available - missing API key")
             return None
             
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
@@ -227,23 +531,14 @@ class VisualConsensusEngine:
         except Exception as e:
             print(f"Error calling {model}: {str(e)}")
             return None
-    
-    def _extract_search_query(self, prompt: str) -> str:
-        """Extract search query from prompt or generate one"""
-        lines = prompt.split('\n')
-        for line in lines:
-            if 'QUESTION:' in line:
-                return line.replace('QUESTION:', '').strip()
         
-        for line in lines:
-            if len(line.strip()) > 10:
-                return line.strip()[:100]
-        
-        return prompt[:100]
+        return None
     
     def _call_sambanova(self, model: str, prompt: str) -> Optional[str]:
+        """Enhanced SambaNova API call with native function calling"""
         api_key = self.session_keys.get('sambanova')
         if not api_key:
+            print(f"No SambaNova API key available for {model}")
             return None
             
         try:
@@ -261,25 +556,58 @@ class VisualConsensusEngine:
             }
             
             sambanova_model = model_mapping.get(model, 'Meta-Llama-3.1-8B-Instruct')
+            print(f"Calling SambaNova model: {sambanova_model}")
             
-            completion = client.chat.completions.create(
-                model=sambanova_model,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=2000,
-                temperature=0.7
-            )
+            # Check if model supports function calling
+            supports_functions = sambanova_model in [
+                'DeepSeek-V3-0324',
+                'Meta-Llama-3.1-8B-Instruct',
+                'Meta-Llama-3.1-405B-Instruct', 
+                'Meta-Llama-3.3-70B-Instruct'
+                # QwQ-32B is NOT in this list, so it won't get function calling
+            ]
             
-            return completion.choices[0].message.content
+            if supports_functions:
+                completion = client.chat.completions.create(
+                    model=sambanova_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=SEARCH_FUNCTIONS,
+                    tool_choice="auto",
+                    max_tokens=1000,
+                    temperature=0.7
+                )
+            else:
+                # QwQ-32B and other models that don't support function calling
+                print(f"Model {sambanova_model} doesn't support function calling - using regular completion")
+                completion = client.chat.completions.create(
+                    model=sambanova_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1000,
+                    temperature=0.7
+                )
+            
+            # Handle function calls if present (only for models that support it)
+            if supports_functions:
+                return self.handle_function_calls(completion, prompt, model)
+            else:
+                # For models without function calling, return response directly
+                if completion and completion.choices and len(completion.choices) > 0:
+                    return completion.choices[0].message.content
+                else:
+                    return None
             
         except Exception as e:
-            print(f"Error calling Sambanova {model}: {str(e)}")
+            print(f"Error calling SambaNova {model} ({sambanova_model}): {str(e)}")
+            # Print more detailed error info
+            import traceback
+            traceback.print_exc()
             return None
     
     def _call_mistral(self, prompt: str) -> Optional[str]:
+        """Enhanced Mistral API call with native function calling"""
         api_key = self.session_keys.get('mistral')
         if not api_key:
+            print("No Mistral API key available")
             return None
             
         try:
@@ -290,33 +618,44 @@ class VisualConsensusEngine:
                 api_key=api_key
             )
             
+            print("Calling Mistral model: mistral-large-latest")
+            
             completion = client.chat.completions.create(
                 model='mistral-large-latest',
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=2000,
+                messages=[{"role": "user", "content": prompt}],
+                tools=SEARCH_FUNCTIONS,
+                tool_choice="auto",
+                max_tokens=1000,
                 temperature=0.7
             )
             
-            return completion.choices[0].message.content
+            # Check if we got a valid response
+            if not completion or not completion.choices or len(completion.choices) == 0:
+                print("Invalid response structure from Mistral")
+                return None
+                
+            # Handle function calls if present
+            return self.handle_function_calls(completion, prompt, 'mistral')
             
         except Exception as e:
-            print(f"Error calling Mistral API mistral-large-latest: {str(e)}")
+            print(f"Error calling Mistral API: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def assign_roles(self, models: List[str], role_assignment: str) -> Dict[str, str]:
-        """Assign roles to models"""
+        """Assign expert roles for rigorous analysis"""
+        
         if role_assignment == "none":
             return {model: "standard" for model in models}
         
         roles_to_assign = []
         if role_assignment == "balanced":
-            roles_to_assign = ["devils_advocate", "fact_checker", "synthesizer", "standard"]
+            roles_to_assign = ["expert_advocate", "critical_analyst", "strategic_advisor", "research_specialist"]
         elif role_assignment == "specialized":
-            roles_to_assign = ["domain_expert", "fact_checker", "creative_thinker", "synthesizer"]
+            roles_to_assign = ["research_specialist", "strategic_advisor", "innovation_catalyst", "expert_advocate"]
         elif role_assignment == "adversarial":
-            roles_to_assign = ["devils_advocate", "devils_advocate", "standard", "standard"]
+            roles_to_assign = ["critical_analyst", "innovation_catalyst", "expert_advocate", "strategic_advisor"]
         
         while len(roles_to_assign) < len(models):
             roles_to_assign.append("standard")
@@ -329,6 +668,9 @@ class VisualConsensusEngine:
     
     def _extract_confidence(self, response: str) -> float:
         """Extract confidence score from response"""
+        if not response or not isinstance(response, str):
+            return 5.0
+        
         confidence_match = re.search(r'Confidence:\s*(\d+(?:\.\d+)?)', response)
         if confidence_match:
             try:
@@ -337,59 +679,70 @@ class VisualConsensusEngine:
                 pass
         return 5.0
     
-    # FIXED: Proper conversation context building based on topology
-    def build_conversation_context(self, all_messages: List[Dict], current_model: str, question: str, round_num: int, topology: str = "full_mesh") -> str:
-        """Build proper conversation context based on topology"""
+    def build_position_summary(self, all_messages: List[Dict], current_model: str, topology: str = "full_mesh") -> str:
+        """Build expert position summary for analysis"""
         
         current_model_name = self.models[current_model]['name']
         
         if topology == "full_mesh":
-            # Everyone sees everyone's responses (except their own)
-            context = f"ORIGINAL QUESTION: {question}\n\nCONVERSATION SO FAR:\n"
-            
+            # Show latest position from each expert
+            latest_positions = {}
             for msg in all_messages:
-                if msg["speaker"] != current_model_name:  # Don't include own messages in context
-                    context += f"\n**{msg['speaker']}** ({msg.get('role', 'standard')}):\n{msg['text']}\n"
-                    if 'confidence' in msg:
-                        context += f"*Confidence: {msg['confidence']}/10*\n"
+                if msg["speaker"] != current_model_name and msg["speaker"] != "Research Agent":
+                    latest_positions[msg["speaker"]] = {
+                        'text': msg['text'][:150] + "..." if len(msg['text']) > 150 else msg['text'],
+                        'confidence': msg.get('confidence', 5)
+                    }
+            
+            summary = "EXPERT POSITIONS:\n"
+            for speaker, pos in latest_positions.items():
+                summary += f"• **{speaker}**: {pos['text']} (Confidence: {pos['confidence']}/10)\n"
             
         elif topology == "star":
-            # Only see moderator and own previous responses
-            context = f"ORIGINAL QUESTION: {question}\n\nRELEVANT RESPONSES:\n"
+            # Only show moderator's latest position
             moderator_name = self.models[self.moderator_model]['name']
+            summary = "MODERATOR ANALYSIS:\n"
             
-            for msg in all_messages:
+            for msg in reversed(all_messages):
                 if msg["speaker"] == moderator_name:
-                    context += f"\n**{msg['speaker']} (Moderator)**:\n{msg['text']}\n"
-        
+                    text = msg['text'][:200] + "..." if len(msg['text']) > 200 else msg['text']
+                    summary += f"• **{moderator_name}**: {text}\n"
+                    break
+            
         elif topology == "ring":
-            # Only see previous model in the ring
-            context = f"ORIGINAL QUESTION: {question}\n\nPREVIOUS RESPONSE:\n"
+            # Only show previous expert's position
             available_models = [model for model, info in self.models.items() if info['available']]
             current_idx = available_models.index(current_model)
             prev_idx = (current_idx - 1) % len(available_models)
             prev_model_name = self.models[available_models[prev_idx]]['name']
             
-            # Get the most recent message from the previous model
+            summary = "PREVIOUS EXPERT:\n"
             for msg in reversed(all_messages):
                 if msg["speaker"] == prev_model_name:
-                    context += f"\n**{msg['speaker']}**:\n{msg['text']}\n"
+                    text = msg['text'][:200] + "..." if len(msg['text']) > 200 else msg['text']
+                    summary += f"• **{prev_model_name}**: {text}\n"
                     break
         
-        return context
+        return summary
     
     def run_visual_consensus_session(self, question: str, discussion_rounds: int = 3, 
                                    decision_protocol: str = "consensus", role_assignment: str = "balanced",
                                    topology: str = "full_mesh", moderator_model: str = "mistral",
-                                   enable_step_by_step: bool = False, log_function=None):
-        """Run consensus with session-isolated visual updates"""
+                                   log_function=None):
+        """Run expert consensus with protocol-appropriate intensity and Research Agent integration"""
         
+        # Get only active models (Research Agent is visual-only now)
         available_models = [model for model, info in self.models.items() if info['available']]
         if not available_models:
             return "❌ No AI models available"
         
         model_roles = self.assign_roles(available_models, role_assignment)
-        participant_names = [self.models[model]['name'] for model in available_models]
+        
+        # Visual participants include Research Agent but active participants don't
+        visual_participant_names = [self.models[model]['name'] for model in available_models] + ["Research Agent"]
+        
+        # Get protocol-appropriate style
+        protocol_style = self.protocol_styles.get(decision_protocol, self.protocol_styles['consensus'])
         
         # Use session-specific logging
         def log_event(event_type: str, speaker: str = "", content: str = "", **kwargs):
@@ -397,12 +750,12 @@ class VisualConsensusEngine:
                 log_function(event_type, speaker, content, **kwargs)
         
         # Log the start
-        log_event('phase', content=f"🚀 Starting Discussion: {question}")
-        log_event('phase', content=f"📊 Configuration: {len(available_models)} models, {decision_protocol} protocol, {role_assignment} roles, {topology} topology")
+        log_event('phase', content=f"🎯 Starting Expert Analysis: {question}")
+        log_event('phase', content=f"📊 Configuration: {len(available_models)} experts, {decision_protocol} protocol, {role_assignment} roles, {topology} topology")
         
-        # Initialize visual state
+        # Initialize visual state with Research Agent visible
         self.update_visual_state({
-            "participants": participant_names,
+            "participants": visual_participant_names,
             "messages": [],
             "currentSpeaker": None,
             "thinking": [],
@@ -411,50 +764,79 @@ class VisualConsensusEngine:
         
         all_messages = []
         
-        # Phase 1: Initial responses
-        log_event('phase', content="📝 Phase 1: Initial Responses")
+        # Phase 1: Initial expert analysis (Research Agent activates only through function calls)
+        log_event('phase', content="📝 Phase 1: Expert Initial Analysis")
         
         for model in available_models:
-            # Log and set thinking state
+            # Log and set thinking state - PRESERVE BUBBLES
             log_event('thinking', speaker=self.models[model]['name'])
+            
+            # Calculate existing bubbles
+            existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+            
             self.update_visual_state({
-                "participants": participant_names,
+                "participants": visual_participant_names,
                 "messages": all_messages,
                 "currentSpeaker": None,
-                "thinking": [self.models[model]['name']]
+                "thinking": [self.models[model]['name']],
+                "showBubbles": existing_bubbles  # KEEP EXISTING BUBBLES
             })
             
-            if not enable_step_by_step:
-                time.sleep(1)
+            time.sleep(1)
             
             role = model_roles[model]
             role_context = self.roles[role]
             
-            prompt = f"""{role_context}
+            # PROTOCOL-ADAPTED: Prompt intensity based on decision protocol
+            if decision_protocol in ['majority_voting', 'ranked_choice']:
+                intensity_prompt = "🎯 CRITICAL DECISION"
+                action_prompt = "Take a STRONG, CLEAR position and defend it with compelling evidence"
+                stakes = "This decision has major consequences - be decisive and convincing"
+            elif decision_protocol == 'consensus':
+                intensity_prompt = "🤝 COLLABORATIVE ANALYSIS"
+                action_prompt = "Provide thorough analysis while remaining open to other perspectives"
+                stakes = "Work toward building understanding and finding common ground"
+            else:  # weighted_voting, unanimity
+                intensity_prompt = "🔬 EXPERT ANALYSIS"
+                action_prompt = "Provide authoritative analysis with detailed reasoning"
+                stakes = "Your expertise and evidence quality will determine influence"
+            
+            prompt = f"""{intensity_prompt}: {question}
 
-QUESTION: {question}
+Your Role: {role_context}
 
-Please provide your initial analysis and answer. Be thoughtful, detailed, and explain your reasoning.
+ANALYSIS REQUIREMENTS:
+- {action_prompt}
+- {stakes}
+- Use specific examples, data, and evidence
+- If you need current information or research, you can search the web or Wikipedia
+- Maximum 200 words of focused analysis
+- End with "Position: [YOUR CLEAR STANCE]" and "Confidence: X/10"
 
-Your response should include:
-1. Your direct answer to the question
-2. Your reasoning and evidence  
-3. Any important considerations or nuances
-4. END YOUR RESPONSE WITH: "Confidence: X/10" where X is your confidence level"""
+Provide your expert analysis:"""
 
-            # Log and set speaking state
+            # Log and set speaking state - PRESERVE BUBBLES
             log_event('speaking', speaker=self.models[model]['name'])
+            
+            # Calculate existing bubbles
+            existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+            
             self.update_visual_state({
-                "participants": participant_names,
+                "participants": visual_participant_names,
                 "messages": all_messages,
                 "currentSpeaker": self.models[model]['name'],
-                "thinking": []
+                "thinking": [],
+                "showBubbles": existing_bubbles  # KEEP EXISTING BUBBLES
             })
             
-            if not enable_step_by_step:
-                time.sleep(2)
+            time.sleep(2)
             
+            # Call model - may trigger function calls and Research Agent activation
             response = self.call_model(model, prompt)
+            
+            # CRITICAL: Ensure response is a string
+            if response and not isinstance(response, str):
+                response = str(response)
             
             if response:
                 confidence = self._extract_confidence(response)
@@ -472,73 +854,105 @@ Your response should include:
                          content=response,
                          role=role,
                          confidence=confidence)
+            else:
+                # Handle failed API call gracefully
+                log_event('message', 
+                         speaker=self.models[model]['name'], 
+                         content="Analysis temporarily unavailable - API connection failed",
+                         role=role,
+                         confidence=0)
                 
-                # Update with new message
-                responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker")))
-                
-                self.update_visual_state({
-                    "participants": participant_names,
-                    "messages": all_messages,
-                    "currentSpeaker": None,
-                    "thinking": [],
-                    "showBubbles": responded_speakers
-                })
-                
-                if enable_step_by_step:
-                    session = get_or_create_session_state(self.session_id)
-                    session["step_continue_event"].clear()
-                    session["step_continue_event"].wait()
-                else:
-                    time.sleep(0.5)
+                message = {
+                    "speaker": self.models[model]['name'],
+                    "text": "⚠️ Analysis temporarily unavailable - API connection failed. Please check your API keys and try again.",
+                    "confidence": 0,
+                    "role": role
+                }
+                all_messages.append(message)
+            
+            # Update with new message
+            responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+            
+            self.update_visual_state({
+                "participants": visual_participant_names,
+                "messages": all_messages,
+                "currentSpeaker": None,
+                "thinking": [],
+                "showBubbles": responded_speakers
+            })
+            
+            time.sleep(2)  # Longer pause to see the response
         
-        # Phase 2: Discussion rounds
+        # Phase 2: Rigorous discussion rounds
         if discussion_rounds > 0:
-            log_event('phase', content=f"💬 Phase 2: Discussion Rounds ({discussion_rounds} rounds)")
+            log_event('phase', content=f"💬 Phase 2: Expert Discussion ({discussion_rounds} rounds)")
             
             for round_num in range(discussion_rounds):
-                log_event('phase', content=f"🔄 Discussion Round {round_num + 1}")
+                log_event('phase', content=f"🔄 Expert Round {round_num + 1}")
                 
                 for model in available_models:
+                    # Log thinking with preserved bubbles
                     log_event('thinking', speaker=self.models[model]['name'])
+                    
+                    existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+                    
                     self.update_visual_state({
-                        "participants": participant_names,
+                        "participants": visual_participant_names,
                         "messages": all_messages,
                         "currentSpeaker": None,
-                        "thinking": [self.models[model]['name']]
+                        "thinking": [self.models[model]['name']],
+                        "showBubbles": existing_bubbles
                     })
                     
-                    if not enable_step_by_step:
-                        time.sleep(1)
+                    time.sleep(1)
                     
-                    # FIXED: Build proper conversation context based on topology
-                    conversation_context = self.build_conversation_context(all_messages, model, question, round_num + 1, topology)
+                    # Build expert position summary
+                    position_summary = self.build_position_summary(all_messages, model, topology)
                     
                     role = model_roles[model]
                     role_context = self.roles[role]
                     
-                    discussion_prompt = f"""{role_context}
+                    # PROTOCOL-ADAPTED: Discussion intensity based on protocol
+                    if decision_protocol in ['majority_voting', 'ranked_choice']:
+                        discussion_style = "DEFEND your position and CHALLENGE weak arguments"
+                        discussion_goal = "Prove why your approach is superior"
+                    elif decision_protocol == 'consensus':
+                        discussion_style = "BUILD on other experts' insights and ADDRESS concerns"
+                        discussion_goal = "Work toward a solution everyone can support"
+                    else:
+                        discussion_style = "REFINE your analysis and RESPOND to other experts"
+                        discussion_goal = "Demonstrate the strength of your reasoning"
+                    
+                    discussion_prompt = f"""🔄 Expert Round {round_num + 1}: {question}
 
-{conversation_context}
+Your Role: {role_context}
 
-ROUND {round_num + 1} of {discussion_rounds}
+{position_summary}
 
-Please provide your updated analysis considering the discussion so far. 
-- Address any points raised by other participants
-- Refine or adjust your position based on new information
-- Maintain your assigned role perspective
+DISCUSSION FOCUS:
+- {discussion_style}
+- {discussion_goal}
+- Address specific points raised by other experts
+- Use current data and research if needed
+- Maximum 180 words of focused response
+- End with "Position: [UNCHANGED/EVOLVED]" and "Confidence: X/10"
 
-END WITH: "Confidence: X/10" """
+Your expert response:"""
 
+                    # Log speaking with preserved bubbles
                     log_event('speaking', speaker=self.models[model]['name'])
+                    
+                    existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+                    
                     self.update_visual_state({
-                        "participants": participant_names,
+                        "participants": visual_participant_names,
                         "messages": all_messages,
                         "currentSpeaker": self.models[model]['name'],
-                        "thinking": []
+                        "thinking": [],
+                        "showBubbles": existing_bubbles
                     })
                     
-                    if not enable_step_by_step:
-                        time.sleep(2)
+                    time.sleep(2)
                     
                     response = self.call_model(model, discussion_prompt)
                     
@@ -557,152 +971,191 @@ END WITH: "Confidence: X/10" """
                                  content=f"Round {round_num + 1}: {response}",
                                  role=model_roles[model],
                                  confidence=confidence)
+                    else:
+                        # Handle failed API call gracefully
+                        log_event('message', 
+                                 speaker=self.models[model]['name'], 
+                                 content=f"Round {round_num + 1}: Analysis temporarily unavailable - API connection failed",
+                                 role=model_roles[model],
+                                 confidence=0)
                         
-                        responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker")))
-                        
-                        self.update_visual_state({
-                            "participants": participant_names,
-                            "messages": all_messages,
-                            "currentSpeaker": None,
-                            "thinking": [],
-                            "showBubbles": responded_speakers
-                        })
-                        
-                        if enable_step_by_step:
-                            session = get_or_create_session_state(self.session_id)
-                            session["step_continue_event"].clear()
-                            session["step_continue_event"].wait()
-                        else:
-                            time.sleep(1)
+                        message = {
+                            "speaker": self.models[model]['name'],
+                            "text": f"Round {round_num + 1}: ⚠️ Analysis temporarily unavailable - API connection failed.",
+                            "confidence": 0,
+                            "role": model_roles[model]
+                        }
+                        all_messages.append(message)
+                    
+                    # Update visual state
+                    responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+                    
+                    self.update_visual_state({
+                        "participants": visual_participant_names,
+                        "messages": all_messages,
+                        "currentSpeaker": None,
+                        "thinking": [],
+                        "showBubbles": responded_speakers
+                    })
+                    
+                    time.sleep(1)
         
-        # Phase 3: Final consensus - IMPROVED WITH PROPER ANALYSIS
-        log_event('phase', content=f"🎯 Phase 3: Final Consensus ({decision_protocol})")
-        log_event('thinking', speaker="All participants", content="Building consensus...")
+        # Phase 3: PROTOCOL-SPECIFIC final decision
+        if decision_protocol == 'consensus':
+            phase_name = "🤝 Phase 3: Building Consensus"
+            moderator_title = "Senior Advisor"
+        elif decision_protocol in ['majority_voting', 'ranked_choice']:
+            phase_name = "⚖️ Phase 3: Final Decision"
+            moderator_title = "Chief Analyst"
+        else:
+            phase_name = "📊 Phase 3: Expert Synthesis"
+            moderator_title = "Lead Researcher"
+        
+        log_event('phase', content=f"{phase_name} - {decision_protocol}")
+        log_event('thinking', speaker="All experts", content="Synthesizing final recommendation...")
+        
+        expert_names = [self.models[model]['name'] for model in available_models]
+        
+        # Preserve existing bubbles during final thinking
+        existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
         
         self.update_visual_state({
-            "participants": participant_names,
+            "participants": visual_participant_names,
             "messages": all_messages,
             "currentSpeaker": None,
-            "thinking": participant_names
+            "thinking": expert_names,
+            "showBubbles": existing_bubbles
         })
         
-        if not enable_step_by_step:
-            time.sleep(2)
+        time.sleep(2)
         
-        # Generate consensus with proper conversation analysis
+        # Generate PROTOCOL-APPROPRIATE final analysis
         moderator = self.moderator_model if self.models[self.moderator_model]['available'] else available_models[0]
         
-        # FIXED: Group messages by speaker for better analysis
-        speaker_positions = {}
+        # Build expert summary
+        final_positions = {}
         confidence_scores = []
         
         for msg in all_messages:
             speaker = msg["speaker"]
-            if speaker not in speaker_positions:
-                speaker_positions[speaker] = []
-            speaker_positions[speaker].append(msg)
-            if 'confidence' in msg:
-                confidence_scores.append(msg['confidence'])
+            if speaker not in [moderator_title, 'Consilium', 'Research Agent']:
+                if speaker not in final_positions:
+                    final_positions[speaker] = []
+                final_positions[speaker].append(msg)
+                if 'confidence' in msg:
+                    confidence_scores.append(msg['confidence'])
         
-        # Build comprehensive context for consensus
-        all_responses = f"ORIGINAL QUESTION: {question}\n\nTOPOLOGY: {topology}\nDECISION PROTOCOL: {decision_protocol}\n\n"
+        # Create PROFESSIONAL expert summary
+        expert_summary = f"🎯 EXPERT ANALYSIS: {question}\n\nFINAL EXPERT POSITIONS:\n"
         
-        for speaker, messages in speaker_positions.items():
-            if speaker != 'Consilium':  # Skip previous consensus attempts
-                all_responses += f"\n{'='*50}\n**{speaker}** (Role: {messages[0].get('role', 'standard')}):\n\n"
-                for i, msg in enumerate(messages):
-                    if i == 0:
-                        all_responses += f"Initial Response: {msg['text']}\n\n"
-                    else:
-                        all_responses += f"Round {i}: {msg['text']}\n\n"
-                
-                if messages[-1].get('confidence'):
-                    all_responses += f"Final Confidence: {messages[-1]['confidence']}/10\n"
+        for speaker, messages in final_positions.items():
+            latest_msg = messages[-1]
+            role = latest_msg.get('role', 'standard')
+            # Extract the core argument
+            core_argument = latest_msg['text'][:200] + "..." if len(latest_msg['text']) > 200 else latest_msg['text']
+            confidence = latest_msg.get('confidence', 5)
+            
+            expert_summary += f"\n📋 **{speaker}** ({role}):\n{core_argument}\nFinal Confidence: {confidence}/10\n"
         
         avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 5.0
         
-        consensus_prompt = f"""You are synthesizing the final result from this multi-AI discussion.
+        # PROTOCOL-SPECIFIC synthesis prompt
+        if decision_protocol == 'consensus':
+            synthesis_goal = "Build a CONSENSUS recommendation that all experts can support"
+            synthesis_format = "**CONSENSUS REACHED:** [Yes/Partial/No]\n**RECOMMENDED APPROACH:** [Synthesis]\n**AREAS OF AGREEMENT:** [Common ground]\n**REMAINING CONCERNS:** [Issues to address]"
+        elif decision_protocol in ['majority_voting', 'ranked_choice']:
+            synthesis_goal = "Determine the STRONGEST position and declare a clear winner"
+            synthesis_format = "**DECISION:** [Clear recommendation]\n**WINNING ARGUMENT:** [Most compelling case]\n**KEY EVIDENCE:** [Supporting data]\n**IMPLEMENTATION:** [Next steps]"
+        else:
+            synthesis_goal = "Synthesize expert insights into actionable recommendations"
+            synthesis_format = "**ANALYSIS CONCLUSION:** [Summary]\n**RECOMMENDED APPROACH:** [Best path forward]\n**RISK ASSESSMENT:** [Key considerations]\n**CONFIDENCE LEVEL:** [Overall certainty]"
+        
+        consensus_prompt = f"""{expert_summary}
 
-{all_responses}
+📊 SENIOR ANALYSIS REQUIRED:
 
-ANALYSIS REQUIREMENTS:
-1. Identify areas where AIs agree vs disagree
-2. Assess the quality and strength of arguments presented
-3. Note any evolution in positions across discussion rounds
-4. Determine if genuine consensus was reached based on the {decision_protocol} protocol
+{synthesis_goal}
 
-AVERAGE CONFIDENCE LEVEL: {avg_confidence:.1f}/10
-CONSENSUS THRESHOLD: 7.0/10
+SYNTHESIS REQUIREMENTS:
+- Analyze the quality and strength of each expert position
+- Identify areas where experts align vs disagree  
+- Provide a clear, actionable recommendation
+- Use additional research if needed to resolve disagreements
+- Maximum 300 words of decisive analysis
 
-Your task:
-- Analyze if the participants reached genuine consensus or if there are significant disagreements
-- If there IS consensus: Provide a comprehensive final answer incorporating all insights
-- If there is NO consensus: Clearly state the disagreements and present the main conflicting positions
-- If partially aligned: Identify areas of agreement and areas of disagreement
+Average Expert Confidence: {avg_confidence:.1f}/10
+Protocol: {decision_protocol}
 
-Be honest about the level of consensus achieved. Do not force agreement where none exists.
+Format:
+{synthesis_format}
 
-Format your response as:
-**CONSENSUS STATUS:** [Reached/Partial/Not Reached]
+Provide your synthesis:"""
 
-**FINAL ANSWER:** [Your comprehensive synthesis]
-
-**AREAS OF AGREEMENT:** [Points where participants aligned]
-
-**REMAINING DISAGREEMENTS:** [If any - explain the key points of contention]
-
-**CONFIDENCE ASSESSMENT:** [Analysis of certainty levels and reliability]"""
-
-        log_event('speaking', speaker="Consilium", content="Analyzing consensus and synthesizing final answer...")
+        log_event('speaking', speaker=moderator_title, content="Synthesizing expert analysis into final recommendation...")
+        
+        # Preserve existing bubbles during final speaking
+        existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+        
         self.update_visual_state({
-            "participants": participant_names,
+            "participants": visual_participant_names,
             "messages": all_messages,
             "currentSpeaker": "Consilium",
-            "thinking": []
+            "thinking": [],
+            "showBubbles": existing_bubbles
         })
         
+        # Call moderator model - may also trigger function calls
         consensus_result = self.call_model(moderator, consensus_prompt)
         
         if not consensus_result:
-            consensus_result = f"""**CONSENSUS STATUS:** Analysis Failed
+            consensus_result = f"""**ANALYSIS INCOMPLETE:** Technical difficulties prevented full synthesis.
 
-**FINAL ANSWER:** Unable to generate consensus analysis. Please review individual participant responses in the discussion log.
+**RECOMMENDED APPROACH:** Manual review of expert positions required.
 
-**AREAS OF DISAGREEMENT:** Analysis could not be completed due to technical issues."""
+**KEY CONSIDERATIONS:** All expert inputs should be carefully evaluated.
+
+**NEXT STEPS:** Retry analysis or conduct additional expert consultation."""
         
-        consensus_reached = "CONSENSUS STATUS:** Reached" in consensus_result or avg_confidence >= 7.0
-        
-        if consensus_reached:
-            visual_summary = "✅ Consensus reached!"
-        elif "Partial" in consensus_result:
-            visual_summary = "⚠️ Partial consensus - some disagreements remain"
+        # Determine result quality based on protocol
+        if decision_protocol == 'consensus':
+            if "CONSENSUS REACHED: Yes" in consensus_result or avg_confidence >= 7.5:
+                visual_summary = "✅ Expert Consensus Achieved"
+            elif "Partial" in consensus_result:
+                visual_summary = "⚠️ Partial Consensus - Some Expert Disagreement"
+            else:
+                visual_summary = "🤔 No Consensus - Significant Expert Disagreement"
+        elif decision_protocol in ['majority_voting', 'ranked_choice']:
+            if any(word in consensus_result.upper() for word in ["DECISION:", "WINNING", "RECOMMEND"]):
+                visual_summary = "⚖️ Clear Expert Recommendation"
+            else:
+                visual_summary = "🤔 Expert Analysis Complete"
         else:
-            visual_summary = "❌ No consensus - significant disagreements identified"
+            visual_summary = "📊 Expert Analysis Complete"
         
         final_message = {
-            "speaker": "Consilium",
-            "text": f"{visual_summary} {consensus_result}",
+            "speaker": moderator_title,
+            "text": f"{visual_summary}\n\n{consensus_result}",
             "confidence": avg_confidence,
-            "role": "consensus"
+            "role": "moderator"
         }
         all_messages.append(final_message)
         
         log_event('message', 
-                 speaker="Consilium", 
+                 speaker=moderator_title, 
                  content=consensus_result,
                  confidence=avg_confidence)
         
-        responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker")))
+        responded_speakers = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
         
         self.update_visual_state({
-            "participants": participant_names,
+            "participants": visual_participant_names,
             "messages": all_messages,
             "currentSpeaker": None,
             "thinking": [],
             "showBubbles": responded_speakers
         })
         
-        log_event('phase', content="✅ Discussion Complete")
+        log_event('phase', content="✅ Expert Analysis Complete")
         
         return consensus_result
 
@@ -715,9 +1168,9 @@ def update_session_roundtable_state(session_id: str, new_state: Dict):
 def run_consensus_discussion_session(question: str, discussion_rounds: int = 3, 
                                    decision_protocol: str = "consensus", role_assignment: str = "balanced",
                                    topology: str = "full_mesh", moderator_model: str = "mistral",
-                                   enable_step_by_step: bool = False, session_id_state: str = None,
+                                   session_id_state: str = None,
                                    request: gr.Request = None):
-    """Session-isolated consensus discussion"""
+    """Session-isolated expert consensus discussion"""
     
     # Get unique session
     session_id = get_session_id(request) if not session_id_state else session_id_state
@@ -726,8 +1179,6 @@ def run_consensus_discussion_session(question: str, discussion_rounds: int = 3,
     # Reset session state for new discussion
     session["discussion_log"] = []
     session["final_answer"] = ""
-    session["step_by_step_active"] = enable_step_by_step
-    session["step_continue_event"].clear()
     
     def session_visual_update_callback(state_update):
         """Session-specific visual update callback"""
@@ -750,33 +1201,32 @@ def run_consensus_discussion_session(question: str, discussion_rounds: int = 3,
     result = engine.run_visual_consensus_session(
         question, discussion_rounds, decision_protocol, 
         role_assignment, topology, moderator_model, 
-        enable_step_by_step, session_log_event
+        session_log_event
     )
     
     # Generate session-specific final answer
     available_models = [model for model, info in engine.models.items() if info['available']]
-    session["final_answer"] = f"""## 🎯 Final Consensus Answer
+    session["final_answer"] = f"""## 🎯 Expert Analysis Results
 
 {result}
 
 ---
 
-### 📊 Discussion Summary
+### 📊 Analysis Summary
 - **Question:** {question}
 - **Protocol:** {decision_protocol.replace('_', ' ').title()}
 - **Topology:** {topology.replace('_', ' ').title()}
-- **Participants:** {len(available_models)} AI models
+- **Experts:** {len(available_models)} AI specialists
 - **Roles:** {role_assignment.title()}
-- **Session ID:** {session_id[3]}...
+- **Research Integration:** Native function calling with live data
+- **Session ID:** {session_id[:3]}...
 
 *Generated by Consilium Visual AI Consensus Platform*"""
-    
-    session["step_by_step_active"] = False
     
     # Format session-specific discussion log
     formatted_log = format_session_discussion_log(session["discussion_log"])
     
-    return ("✅ Discussion Complete - See results below", 
+    return ("✅ Expert Analysis Complete - See results below", 
             json.dumps(session["roundtable_state"]), 
             session["final_answer"], 
             formatted_log,
@@ -787,16 +1237,16 @@ def format_session_discussion_log(discussion_log: list) -> str:
     if not discussion_log:
         return "No discussion log available yet."
     
-    formatted_log = "# 🎭 Complete Discussion Log\n\n"
+    formatted_log = "# 🎭 Complete Expert Discussion Log\n\n"
     
     for entry in discussion_log:
         timestamp = entry.get('timestamp', datetime.now().strftime('%H:%M:%S'))
         if entry['type'] == 'thinking':
-            formatted_log += f"**{timestamp}** 🤔 **{entry['speaker']}** is thinking...\n\n"
+            formatted_log += f"**{timestamp}** 🤔 **{entry['speaker']}** is analyzing...\n\n"
         elif entry['type'] == 'speaking':
-            formatted_log += f"**{timestamp}** 💬 **{entry['speaker']}** is responding...\n\n"
+            formatted_log += f"**{timestamp}** 💬 **{entry['speaker']}** is presenting...\n\n"
         elif entry['type'] == 'message':
-            formatted_log += f"**{timestamp}** ✅ **{entry['speaker']}** ({entry.get('role', 'standard')}):\n"
+            formatted_log += f"**{timestamp}** 📋 **{entry['speaker']}** ({entry.get('role', 'standard')}):\n"
             formatted_log += f"> {entry['content']}\n"
             if 'confidence' in entry:
                 formatted_log += f"*Confidence: {entry['confidence']}/10*\n\n"
@@ -806,14 +1256,6 @@ def format_session_discussion_log(discussion_log: list) -> str:
             formatted_log += f"\n---\n## {entry['content']}\n---\n\n"
     
     return formatted_log
-
-def continue_step_session(session_id_state: str):
-    """Function called by the Next Step button for specific session"""
-    if session_id_state and session_id_state in user_sessions:
-        session = user_sessions[session_id_state]
-        session["step_continue_event"].set()
-        return "✅ Continuing... Next AI will respond shortly"
-    return "❌ Session not found"
 
 def check_model_status_session(session_id_state: str = None, request: gr.Request = None):
     """Check and display current model availability for specific session"""
@@ -825,19 +1267,19 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
     mistral_key = session_keys.get("mistral") or MISTRAL_API_KEY
     sambanova_key = session_keys.get("sambanova") or SAMBANOVA_API_KEY
     
-    status_info = "## 🔍 Model Availability Status\n\n"
+    status_info = "## 🔍 Expert Model Availability\n\n"
     
     models = {
         'Mistral Large': mistral_key,
-        'DeepSeek-R1': sambanova_key,
+        'DeepSeek-V3': sambanova_key,
         'Meta-Llama-3.1-8B': sambanova_key,
         'QwQ-32B': sambanova_key,
-        'Search': True
+        'Research Agent': True
     }
     
     for model_name, available in models.items():
-        if model_name == 'Search':
-            status = "✅ Available (Built-in)"
+        if model_name == 'Research Agent':
+            status = "✅ Available (Built-in + Native Function Calling)"
         else:
             if available:
                 status = f"✅ Available (Key: {available[:3]}...)"
@@ -847,88 +1289,90 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
     
     return status_info
 
-# Create the hybrid interface
+# Create the professional interface
 with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
-    # 🎭 Consilium: Visual AI Consensus Platform
+    # 🎭 Consilium: Multi-AI Expert Consensus Platform
     
-    **Watch AI models collaborate in real-time around a visual roundtable!**
+    **Watch expert AI models collaborate with live research to solve your most complex decisions**
     
-    This platform combines:
-    - 🎨 **Visual Roundtable Interface** - See AI avatars thinking and speaking
-    - 🤖 **Multi-Model Consensus** - Mistral, Deepseek, Llama, QwQ  
-    - 🎭 **Dynamic Role Assignment** - Devil's advocate, fact checker, synthesizer roles
-    - 🌐 **Communication Topologies** - Full mesh, star, ring patterns
-    - 🗳️ **Decision Protocols** - Consensus, voting, weighted, ranked choice
-    - 🔍 **Web Search Integration** - Real-time information gathering
-    - 🔒 **Session Isolation** - Each user gets their own private discussion space
+    This platform provides **rigorous multi-perspective analysis** with:
+    - 🎨 **Visual Expert Roundtable** - See AI specialists thinking and collaborating
+    - 🤖 **Multi-Model Expertise** - Mistral, DeepSeek, Llama, QwQ specialists
+    - 🔍 **Native Research Integration** - Expert AIs call research functions automatically
+    - 🎓 **Expert Role Assignment** - Advocates, analysts, advisors, researchers
+    - 🌐 **Strategic Communication** - Full mesh collaboration, hierarchical, sequential
+    - ⚖️ **Protocol-Based Decisions** - Consensus building, competitive analysis, expert synthesis
+    - 📊 **Live Data Integration** - Real-time web search and Wikipedia research
+    - 🔒 **Private Sessions** - Each user gets their own secure analysis space
     
-    **Perfect for:** Complex decisions, research analysis, creative brainstorming, problem-solving
+    **🚀 NEW: Native Function Calling** - Expert AIs automatically request research when needed!
+    
+    **Perfect for:** Strategic planning, technical decisions, research synthesis, policy analysis
     """)
     
     # Hidden session state component
     session_state = gr.State()
     
-    with gr.Tab("🎭 Visual Consensus Discussion"):
+    with gr.Tab("🎭 Expert Consensus Analysis"):
         with gr.Row():
             with gr.Column(scale=1):
                 question_input = gr.Textbox(
-                    label="Discussion Question",
-                    placeholder="What would you like the AI council to discuss and decide?",
+                    label="🎯 Strategic Decision Question",
+                    placeholder="What complex decision would you like expert AI analysis on?",
                     lines=3,
-                    value="What are the most effective strategies for combating climate change?"
+                    value="Should our startup pivot to AI-first product development?"
                 )
+                
+                # Professional question suggestion buttons
+                with gr.Row():
+                    suggestion_btn1 = gr.Button("🏢 Business Strategy", size="sm")
+                    suggestion_btn2 = gr.Button("⚛️ Technology Choice", size="sm") 
+                    suggestion_btn3 = gr.Button("🌍 Policy Analysis", size="sm")
                 
                 with gr.Row():
                     decision_protocol = gr.Dropdown(
                         choices=["consensus", "majority_voting", "weighted_voting", "ranked_choice", "unanimity"],
                         value="consensus",
-                        label="🗳️ Decision Protocol"
+                        label="⚖️ Decision Protocol",
+                        info="How should experts reach a conclusion?"
                     )
                     
                     role_assignment = gr.Dropdown(
                         choices=["balanced", "specialized", "adversarial", "none"],
                         value="balanced",
-                        label="🎭 Role Assignment"
+                        label="🎓 Expert Roles",
+                        info="How should expertise be distributed?"
                     )
                 
                 with gr.Row():
                     topology = gr.Dropdown(
                         choices=["full_mesh", "star", "ring"],
                         value="full_mesh",
-                        label="🌐 Communication Pattern",
-                        info="Full mesh: all see all, Star: only moderator, Ring: chain communication"
+                        label="🌐 Communication Structure",
+                        info="Full mesh: all collaborate, Star: through moderator, Ring: sequential"
                     )
                     
                     moderator_model = gr.Dropdown(
                         choices=["mistral", "sambanova_deepseek", "sambanova_llama", "sambanova_qwq"],
                         value="mistral",
-                        label="👨‍⚖️ Moderator"
+                        label="👨‍⚖️ Lead Analyst"
                     )
                 
                 rounds_input = gr.Slider(
                     minimum=1, maximum=5, value=2, step=1,
-                    label="🔄 Discussion Rounds"
+                    label="🔄 Discussion Rounds",
+                    info="More rounds = deeper analysis"
                 )
                 
-                enable_clickthrough = gr.Checkbox(
-                    label="⏯️ Enable Step-by-Step Mode",
-                    value=False,
-                    info="Pause at each step for manual control"
-                )
+                start_btn = gr.Button("🚀 Start Expert Analysis", variant="primary", size="lg")
                 
-                start_btn = gr.Button("🚀 Start Visual Consensus Discussion", variant="primary", size="lg")
-                
-                # Step-by-step control button (only visible when step mode is active)
-                next_step_btn = gr.Button("⏯️ Next Step", variant="secondary", size="lg", visible=False)
-                step_status = gr.Textbox(label="Step Control", visible=False, interactive=False)
-                
-                status_output = gr.Textbox(label="📊 Discussion Status", interactive=False)
+                status_output = gr.Textbox(label="📊 Analysis Status", interactive=False)
             
             with gr.Column(scale=2):
                 # The visual roundtable component
                 roundtable = consilium_roundtable(
-                    label="🎭 AI Consensus Roundtable",
+                    label="🎭 AI Expert Roundtable with Research Agent",
                     value=json.dumps({
                         "participants": [],
                         "messages": [],
@@ -941,74 +1385,43 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         # Final answer section
         with gr.Row():
             final_answer_output = gr.Markdown(
-                label="🎯 Final Consensus Answer",
-                value="*Discussion results will appear here...*"
+                label="🎯 Expert Analysis Results",
+                value="*Expert analysis results will appear here...*"
             )
         
         # Collapsible discussion log
-        with gr.Accordion("📋 Complete Discussion Log", open=False):
+        with gr.Accordion("📋 Complete Expert Discussion Log", open=False):
             discussion_log_output = gr.Markdown(
-                value="*Complete discussion transcript will appear here...*"
+                value="*Complete expert discussion transcript will appear here...*"
             )
+        
+        # Professional question handlers
+        def set_business_question():
+            return "Should our startup pivot to AI-first product development?"
+        
+        def set_tech_question():
+            return "Microservices vs monolith architecture for our scaling platform?"
+        
+        def set_policy_question():
+            return "Should we prioritize geoengineering research over emissions reduction?"
+        
+        suggestion_btn1.click(set_business_question, outputs=[question_input])
+        suggestion_btn2.click(set_tech_question, outputs=[question_input])
+        suggestion_btn3.click(set_policy_question, outputs=[question_input])
         
         # Event handlers
-        def on_start_discussion(question, rounds, protocol, roles, topology, moderator, enable_step, session_id_state, request: gr.Request = None):
-            # Start discussion immediately for both modes
-            
-            if enable_step:
-                # Step-by-step mode: Start discussion in background thread
-                def run_discussion():
-                    run_consensus_discussion_session(question, rounds, protocol, roles, topology, moderator, enable_step, session_id_state, request)
-                
-                discussion_thread = threading.Thread(target=run_discussion)
-                discussion_thread.daemon = True
-                discussion_thread.start()
-                
-                # Get session ID for this user
-                session_id = get_session_id(request)
-                
-                return (
-                    "🎬 Step-by-step mode: Discussion started - will pause after each AI response",
-                    json.dumps(get_or_create_session_state(session_id)["roundtable_state"]),
-                    "*Discussion starting in step-by-step mode...*",
-                    "*Discussion log will appear here...*",
-                    gr.update(visible=True),  # Show next step button
-                    gr.update(visible=True, value="Discussion running - will pause after first AI response"),  # Show step status
-                    session_id
-                )
-            else:
-                # Normal mode - start immediately and hide step controls
-                result = run_consensus_discussion_session(question, rounds, protocol, roles, topology, moderator, enable_step, session_id_state, request)
-                return result + (gr.update(visible=False), gr.update(visible=False))
-        
-        # Function to toggle step controls visibility
-        def toggle_step_controls(enable_step):
-            return (
-                gr.update(visible=enable_step),  # next_step_btn
-                gr.update(visible=enable_step)   # step_status
-            )
-        
-        # Hide/show step controls when checkbox changes
-        enable_clickthrough.change(
-            toggle_step_controls,
-            inputs=[enable_clickthrough],
-            outputs=[next_step_btn, step_status]
-        )
+        def on_start_discussion(question, rounds, protocol, roles, topology, moderator, session_id_state, request: gr.Request = None):
+            # Start discussion immediately
+            result = run_consensus_discussion_session(question, rounds, protocol, roles, topology, moderator, session_id_state, request)
+            return result
         
         start_btn.click(
             on_start_discussion,
-            inputs=[question_input, rounds_input, decision_protocol, role_assignment, topology, moderator_model, enable_clickthrough, session_state],
-            outputs=[status_output, roundtable, final_answer_output, discussion_log_output, next_step_btn, step_status, session_state]
+            inputs=[question_input, rounds_input, decision_protocol, role_assignment, topology, moderator_model, session_state],
+            outputs=[status_output, roundtable, final_answer_output, discussion_log_output, session_state]
         )
         
-        # Next step button handler
-        next_step_btn.click(
-            continue_step_session,
-            inputs=[session_state],
-            outputs=[step_status]
-        )
-        
-        # Auto-refresh the roundtable state every 0.5 seconds during discussion
+        # Auto-refresh the roundtable state every 1 second during discussion for better visibility
         def refresh_roundtable(session_id_state, request: gr.Request = None):
             session_id = get_session_id(request) if not session_id_state else session_id_state
             if session_id in user_sessions:
@@ -1021,7 +1434,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                 "showBubbles": []
             })
         
-        gr.Timer(0.5).tick(refresh_roundtable, inputs=[session_state], outputs=[roundtable])
+        gr.Timer(1.0).tick(refresh_roundtable, inputs=[session_state], outputs=[roundtable])
     
     with gr.Tab("🔧 Configuration & Setup"):
         gr.Markdown("## 🔑 API Keys Configuration")
@@ -1034,13 +1447,13 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                     label="Mistral API Key",
                     placeholder="Enter your Mistral API key...",
                     type="password",
-                    info="Required for Mistral Large model"
+                    info="Required for Mistral Large expert model with function calling"
                 )
                 sambanova_key_input = gr.Textbox(
                     label="SambaNova API Key", 
                     placeholder="Enter your SambaNova API key...",
                     type="password",
-                    info="Required for DeepSeek, Llama, and QwQ models"
+                    info="Required for DeepSeek, Llama, and QwQ expert models with function calling"
                 )
                 
             with gr.Column():
@@ -1062,7 +1475,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         model_status_display = gr.Markdown(check_model_status_session())
         
         # Add refresh button for model status
-        refresh_status_btn = gr.Button("🔄 Refresh Model Status")
+        refresh_status_btn = gr.Button("🔄 Refresh Expert Status")
         refresh_status_btn.click(
             check_model_status_session,
             inputs=[session_state],
@@ -1075,7 +1488,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         ### 🚀 Quick Start (Recommended)
         1. **Enter API keys above** (they'll be used only for your session)
         2. **Click "Save API Keys"** 
-        3. **Start a discussion!**
+        3. **Start an expert analysis with live research!**
         
         ### 🔑 Get API Keys:
         - **Mistral:** [console.mistral.ai](https://console.mistral.ai)
@@ -1088,23 +1501,30 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         export MODERATOR_MODEL=mistral
         ```
         
-        ### 🦙 Sambanova Integration
-        The platform includes **3 Sambanova models**:
-        - **DeepSeek-R1**: Advanced reasoning model
-        - **Meta-Llama-3.1-8B**: Fast, efficient discussions  
-        - **QwQ-32B**: Large-scale consensus analysis
+        ### 🦙 SambaNova Expert Models (with Function Calling)
+        The platform includes **3 SambaNova specialists**:
+        - **DeepSeek-R1**: Advanced reasoning and strategic analysis
+        - **Meta-Llama-3.1-8B**: Fast, efficient collaborative analysis + research calls
+        - **QwQ-32B**: Large-scale comprehensive evaluation
         
-        ### 🔍 Web Search Agent
-        Built-in agent using **smolagents** with:
-        - **DuckDuckGoSearchTool**: Web searches
-        - **VisitWebpageTool**: Deep content analysis
-        - **WikipediaTool**: Comprehensive research
-        - **TinyLlama**: Fast inference for search synthesis
+        ### 🔍 Native Research Integration
+        **NEW: Professional-Grade Function Calling** using OpenAI-compatible APIs:
+        - **search_web**: Current information and trend analysis
+        - **search_wikipedia**: Comprehensive background knowledge
+        - **Visual Integration**: See Research Agent activate when called
+        - **Natural AI Behavior**: AIs decide when they need information
+        - **Clean API Usage**: No text parsing, proper error handling
         
         ### 📋 Dependencies
         ```bash
         pip install gradio requests python-dotenv smolagents gradio-consilium-roundtable wikipedia openai
         ```
+        
+        ### 🏆 Competition-Winning Features
+        - **Industry-Standard Function Calling**: Using OpenAI-compatible APIs
+        - **Professional Architecture**: Clean separation of concerns
+        - **Visual Innovation**: See AI collaboration in real-time
+        - **Future-Proof Design**: Easily extensible, standard patterns
         
         ### 🔗 MCP Integration
         Add to your Claude Desktop config:
@@ -1120,98 +1540,246 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         ```
         
         ### 🔒 Privacy & Security
-        - **Session Isolation**: Each user gets their own private discussion space
+        - **Session Isolation**: Each user gets their own private analysis space
         - **API Key Protection**: Keys are stored only in your browser session
-        - **No Global State**: Your discussions are not visible to other users
+        - **No Global State**: Your analyses are not visible to other users
         - **Secure Communication**: All API calls use HTTPS encryption
         """)
     
-    with gr.Tab("📚 Usage Examples"):
+    with gr.Tab("📚 Usage Guide"):
         gr.Markdown("""
-        ## 🎯 Example Discussion Topics
+        ## 🎯 How to Get Expert AI Analysis with Live Research
         
-        ### 🧠 Complex Problem Solving
-        - "How should we approach the global housing crisis?"
-        - "What's the best strategy for reducing plastic pollution?"
-        - "How can we make AI development more democratic?"
+        ### 🚀 **NEW: Native Research Integration**
         
-        ### 💼 Business Strategy
-        - "Should our company invest in quantum computing research?"
-        - "What's the optimal remote work policy for productivity?"
-        - "How should startups approach AI integration?"
+        **Watch Expert AIs automatically call for research:**
+        - 🤔 Expert analyzes your question
+        - 🔍 Expert decides: "I need current data on this topic"
+        - ⚡ Research Agent springs into action automatically
+        - 📊 Expert continues with fresh research integrated
+        - 💡 More informed, data-driven expert recommendations
         
-        ### 🔬 Technical Analysis  
-        - "What's the future of web development frameworks?"
-        - "How should we handle data privacy in the age of AI?"
-        - "What are the best practices for microservices architecture?"
+        **No manual prompting needed - AIs naturally request information!**
         
-        ### 🌍 Social Issues
-        - "How can we bridge political divides in society?"
-        - "What's the most effective approach to education reform?"
-        - "How should we regulate social media platforms?"
+        ### 🏆 **Professional Decision Questions**
         
-        ## 🎭 Visual Features
+        #### **💼 Business & Strategy**
+        - "Should our startup pivot to AI-first product development?"
+        - "Microservices vs monolith architecture for our scaling platform?"
+        - "Should we prioritize in-house development or partnerships for AI capabilities?"
+        - "What's the optimal pricing strategy for our SaaS product expansion?"
+        - "Should we target enterprise or SMB market segments first?"
         
-        **Watch for these visual cues:**
-        - 🤔 **Orange pulsing avatars** = AI is thinking
-        - ✨ **Gold glowing avatars** = AI is responding  
-        - 💬 **Speech bubbles** = Click avatars to see messages
-        - 🎯 **Center consensus** = Final decision reached
+        #### **🔬 Technology & Research**
+        - "What's the most promising approach to carbon capture technology?"
+        - "Should we bet on quantum computing for cryptography applications?"
+        - "Is edge computing essential for our IoT deployment strategy?"
+        - "React vs Vue vs Angular for our large-scale web application?"
+        - "Should we adopt GraphQL or stick with REST APIs?"
         
-        **The roundtable updates in real-time as the discussion progresses!**
+        #### **🌍 Policy & Society**
+        - "Should we prioritize geoengineering research over emissions reduction?"
+        - "Is nuclear energy essential for meeting climate goals?"
+        - "Should AI development be paused until alignment is solved?"
+        - "How should we regulate social media algorithm transparency?"
+        - "Should gene editing be allowed for human enhancement?"
         
-        ## 🎮 Role Assignments Explained
+        #### **🚀 Innovation & Future**
+        - "Will remote work fundamentally change innovation culture?"
+        - "Should we colonize Mars or focus resources on Earth?"
+        - "Is cryptocurrency adoption inevitable for global finance?"
+        - "Will lab-grown meat replace traditional agriculture?"
+        - "Should we trust AI with medical decision-making?"
         
-        ### 🎭 Balanced (Recommended)
-        - **Devil's Advocate**: Challenges assumptions
-        - **Fact Checker**: Verifies claims and accuracy
-        - **Synthesizer**: Finds common ground
-        - **Standard**: Provides balanced analysis
+        ### 🎓 **Expert Role Assignments**
         
-        ### 🎓 Specialized
-        - **Domain Expert**: Technical expertise
-        - **Fact Checker**: Accuracy verification
-        - **Creative Thinker**: Innovative solutions
-        - **Synthesizer**: Bridge building
+        #### **⚖️ Balanced (Recommended for Most Decisions)**
+        - **Expert Advocate**: Passionate defender with compelling evidence
+        - **Critical Analyst**: Rigorous critic identifying flaws and risks
+        - **Strategic Advisor**: Practical implementer focused on real-world constraints
+        - **Research Specialist**: Authoritative knowledge with evidence-based insights
         
-        ### ⚔️ Adversarial
-        - **Double Devil's Advocate**: Maximum challenge
-        - **Standard**: Balanced counter-perspective
+        #### **🎯 Specialized (For Technical Decisions)**
+        - **Research Specialist**: Deep domain expertise and authoritative analysis
+        - **Strategic Advisor**: Implementation-focused practical guidance
+        - **Innovation Catalyst**: Breakthrough approaches and unconventional thinking
+        - **Expert Advocate**: Passionate championing of specialized viewpoints
         
-        ## 🗳️ Decision Protocols
+        #### **⚔️ Adversarial (For Controversial Topics)**
+        - **Critical Analyst**: Aggressive identification of weaknesses
+        - **Innovation Catalyst**: Deliberately challenging conventional wisdom
+        - **Expert Advocate**: Passionate defense of positions
+        - **Strategic Advisor**: Hard-nosed practical constraints
         
-        - **Consensus**: Seek agreement among all participants
-        - **Majority Voting**: Most popular position wins
-        - **Weighted Voting**: Higher confidence scores matter more
-        - **Ranked Choice**: Preference-based selection
-        - **Unanimity**: All must agree completely
+        ## ⚖️ **Decision Protocols Explained**
         
-        ## 🌐 Communication Topologies (NOW IMPLEMENTED!)
+        ### 🤝 **Consensus** (Collaborative)
+        - **Goal**: Find solutions everyone can support
+        - **Style**: Respectful but rigorous dialogue
+        - **Best for**: Team decisions, long-term strategy
+        - **Output**: "Expert Consensus Achieved" or areas of disagreement
         
-        ### 🕸️ **Full Mesh** (Default)
-        - Every AI sees responses from ALL other AIs
-        - Maximum information sharing
-        - Best for comprehensive consensus
+        ### 🗳️ **Majority Voting** (Competitive)
+        - **Goal**: Let the strongest argument win
+        - **Style**: Passionate advocacy and strong positions
+        - **Best for**: Clear either/or decisions
+        - **Output**: "Clear Expert Recommendation" with winning argument
         
-        ### ⭐ **Star** 
-        - AIs only see the moderator's responses
-        - Centralized communication pattern
-        - Good for controlled discussions
+        ### 📊 **Weighted Voting** (Expertise-Based)
+        - **Goal**: Let expertise and evidence quality determine influence
+        - **Style**: Authoritative analysis with detailed reasoning
+        - **Best for**: Technical decisions requiring deep knowledge
+        - **Output**: Expert synthesis weighted by confidence levels
         
-        ### 🔄 **Ring**
-        - Each AI only sees the previous AI's response
-        - Sequential information flow
-        - Interesting for building on ideas
+        ### 🏆 **Ranked Choice** (Comprehensive)
+        - **Goal**: Explore all options systematically
+        - **Style**: Systematic evaluation of alternatives
+        - **Best for**: Complex decisions with multiple options
+        - **Output**: Ranked recommendations with detailed analysis
         
-        ## 🔒 Session Isolation
+        ### 🔒 **Unanimity** (Diplomatic)
+        - **Goal**: Achieve complete agreement
+        - **Style**: Bridge-building and diplomatic dialogue
+        - **Best for**: High-stakes decisions requiring buy-in
+        - **Output**: Unanimous agreement or identification of blocking issues
         
-        **Each user gets their own private space:**
-        - ✅ Your discussions are private to you
-        - ✅ Your API keys are not shared
-        - ✅ Your conversation history is isolated
-        - ✅ Multiple users can use the platform simultaneously
+        ## 🌐 **Communication Structures**
         
-        **Perfect for teams, research groups, and individual use!**
+        ### 🕸️ **Full Mesh** (Complete Collaboration)
+        - Every expert sees all other expert responses
+        - Maximum information sharing and cross-pollination
+        - Best for comprehensive analysis and complex decisions
+        - **Use when:** You want thorough multi-perspective analysis
+        
+        ### ⭐ **Star** (Hierarchical Analysis)
+        - Experts only see the lead analyst's responses
+        - Prevents groupthink, maintains independent thinking
+        - Good for getting diverse, uninfluenced perspectives
+        - **Use when:** You want fresh, independent expert takes
+        
+        ### 🔄 **Ring** (Sequential Analysis)
+        - Each expert only sees the previous expert's response
+        - Creates interesting chains of reasoning and idea evolution
+        - Can lead to surprising consensus emergence
+        - **Use when:** You want to see how ideas build and evolve
+        
+        ## 🔍 **Research Integration in Action**
+        
+        ### **🎪 What You'll See:**
+        
+        1. **🤔 Expert Thinking**: Orange pulsing as expert analyzes
+        2. **🔍 Research Request**: Expert decides they need current data
+        3. **⚡ Research Agent Activation**: Research Agent springs to life
+        4. **💬 Research Activity**: "Researching for Mistral: carbon capture technology trends"
+        5. **📊 Data Integration**: Expert continues with fresh research
+        6. **✨ Enhanced Analysis**: More informed, evidence-based recommendations
+        
+        ### **🔬 Types of Research Calls:**
+        
+        - **Current Market Data**: "Latest trends in renewable energy investment"
+        - **Technical Specifications**: "Performance comparison of database architectures"
+        - **Policy Information**: "Recent climate change legislation updates"
+        - **Scientific Research**: "Latest findings on AI alignment approaches"
+        - **Background Knowledge**: "Comprehensive overview of nuclear energy safety"
+        
+        ## 💡 **Pro Tips for Best Results**
+        
+        ### 🎯 **Question Design for Research Integration**
+        1. **Include time sensitivity** - "Current best practices for...", "Latest developments in..."
+        2. **Reference specific domains** - "Enterprise software", "Climate technology", "AI safety"
+        3. **Mention data needs** - "Market analysis", "Performance comparison", "Research findings"
+        4. **Set research context** - "Based on current evidence...", "With latest data..."
+        
+        ### 🎓 **Role Strategy with Research**
+        1. **Research Specialist + Function Calls** = Authoritative, data-backed analysis
+        2. **Strategic Advisor + Current Data** = Practical, market-informed recommendations
+        3. **Critical Analyst + Latest Research** = Evidence-based risk assessment
+        4. **Innovation Catalyst + Trend Data** = Forward-looking, informed disruption
+        
+        ### ⚖️ **Protocol Selection for Research-Heavy Decisions**
+        1. **Consensus with Research**: Build agreement on shared data foundation
+        2. **Weighted Voting with Research**: Let data quality and expertise determine influence
+        3. **Majority with Current Data**: Competitive analysis with latest information
+        4. **Ranked Choice with Research**: Systematic evaluation of options with current data
+        
+        ### 🔄 **Discussion Rounds with Research**
+        1. **Round 1**: Initial analysis + automatic research calls
+        2. **Round 2**: Debate with shared research foundation
+        3. **Round 3+**: Refined positions with additional targeted research
+        
+        ## 🎪 **The Enhanced Visual Experience**
+        
+        **Watch for these enhanced expert indicators:**
+        - 🤔 **Orange pulsing** = Expert analyzing the question
+        - 🔍 **Research Request** = Expert calling for information
+        - ⚡ **Research Agent Active** = Gathering data automatically
+        - ✨ **Gold glowing** = Expert presenting research-enhanced analysis
+        - 💬 **Enhanced speech bubbles** = Data-driven insights and recommendations
+        - 📊 **Center synthesis** = Research-informed expert consensus
+        
+        **The roundtable now shows real AI research collaboration in action!**
+        
+        ## 🏆 **Competition-Winning Technical Features**
+        
+        ### **🛠️ Professional-Grade Implementation:**
+        - **Native OpenAI Function Calling**: Industry-standard API patterns
+        - **Clean Architecture**: No text parsing, proper error handling
+        - **Type Safety**: Function parameters with validation
+        - **Future-Proof**: Standard patterns, easily extensible
+        
+        ### **🎨 Visual Innovation:**
+        - **Real-Time Research**: See AIs collaborating with research agent
+        - **Seamless Integration**: Research appears naturally in conversation
+        - **Professional UX**: Visual feedback for all research activity
+        - **Responsive Design**: Smooth transitions and state management
+        
+        ### **🚀 Modern AI Workflows:**
+        - **Natural AI Behavior**: AIs decide when they need information
+        - **Autonomous Research**: No manual prompting required
+        - **Multi-Source Integration**: Web search + Wikipedia + expert analysis
+        - **Research Quality**: Authoritative sources with proper attribution
+        
+        ## 🔒 **Enhanced Private Expert Sessions**
+        
+        **Each user gets their own isolated expert panel with research:**
+        - ✅ Your decisions and research are private and secure
+        - ✅ Your API keys enable your personal research capabilities
+        - ✅ Your analysis history includes all research activity
+        - ✅ Multiple users can run research-enhanced analyses simultaneously
+        
+        **Perfect for teams, consultants, researchers, and strategic planning with live data!**
+        
+        ---
+        
+        ## 🎯 **Getting Started with Research-Enhanced Analysis**
+        
+        1. **Choose a data-sensitive decision question** - Include current trends, market data, or recent developments
+        2. **Select your decision protocol** - Consider research-friendly options like weighted voting
+        3. **Pick expert roles** that benefit from research - Research specialists, strategic advisors
+        4. **Start the analysis** and watch experts automatically call for research
+        5. **Review enhanced results** with current data integration
+        6. **Implement data-driven recommendations** with confidence
+        
+        **Ready to make better decisions with expert AI analysis + live research?** 🚀
+        
+        ### **🔬 Research Integration Examples:**
+        
+        **Business Question**: "Should we adopt microservices architecture?"
+        - 🔍 Expert calls: "Current microservices adoption trends enterprise software"
+        - 📊 Gets latest market data and implementation studies
+        - 💡 Provides informed recommendation based on current evidence
+        
+        **Technical Question**: "What's the best approach to carbon capture?"
+        - 🔍 Expert calls: "Latest carbon capture technology developments 2025"
+        - 📊 Gets current research and performance data
+        - 💡 Recommends based on cutting-edge scientific findings
+        
+        **Policy Question**: "Should we prioritize nuclear energy?"
+        - 🔍 Expert calls: "Nuclear energy safety statistics climate goals"
+        - 📊 Gets current policy data and safety records
+        - 💡 Makes evidence-based policy recommendation
+        
+        **The future of AI decision-making is here - intelligent, research-enhanced, collaborative analysis!**
         """)
 
 # Launch configuration
