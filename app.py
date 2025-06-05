@@ -1306,8 +1306,6 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
     - 📊 **Live Data Integration** - Real-time web search and Wikipedia research
     - 🔒 **Private Sessions** - Each user gets their own secure analysis space
     
-    **🚀 NEW: Native Function Calling** - Expert AIs automatically request research when needed!
-    
     **Perfect for:** Strategic planning, technical decisions, research synthesis, policy analysis
     """)
     
@@ -1507,24 +1505,14 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - **Meta-Llama-3.1-8B**: Fast, efficient collaborative analysis + research calls
         - **QwQ-32B**: Large-scale comprehensive evaluation
         
-        ### 🔍 Native Research Integration
-        **NEW: Professional-Grade Function Calling** using OpenAI-compatible APIs:
-        - **search_web**: Current information and trend analysis
-        - **search_wikipedia**: Comprehensive background knowledge
-        - **Visual Integration**: See Research Agent activate when called
-        - **Natural AI Behavior**: AIs decide when they need information
-        - **Clean API Usage**: No text parsing, proper error handling
-        
         ### 📋 Dependencies
         ```bash
         pip install gradio requests python-dotenv smolagents gradio-consilium-roundtable wikipedia openai
         ```
-        
-        ### 🏆 Competition-Winning Features
-        - **Industry-Standard Function Calling**: Using OpenAI-compatible APIs
-        - **Professional Architecture**: Clean separation of concerns
-        - **Visual Innovation**: See AI collaboration in real-time
-        - **Future-Proof Design**: Easily extensible, standard patterns
+        ### Start
+        ```bash
+        python app.py
+        ```
         
         ### 🔗 MCP Integration
         Add to your Claude Desktop config:
