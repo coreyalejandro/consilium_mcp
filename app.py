@@ -26,22 +26,6 @@ MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
 # Session-based storage for isolated discussions
 user_sessions: Dict[str, Dict] = {}
 
-# PROFESSIONAL: Compelling decision-making questions that create rigorous analysis
-PROFESSIONAL_DECISION_QUESTIONS = [
-    "Should our startup pivot to AI-first product development?",
-    "Microservices vs monolith architecture for our scaling platform?", 
-    "What's the most promising approach to carbon capture technology?",
-    "Should we prioritize geoengineering research over emissions reduction?",
-    "Is nuclear energy essential for meeting climate goals?",
-    "Should AI development be paused until alignment is solved?",
-    "Will remote work fundamentally change innovation culture?",
-    "Should gene editing be used for human enhancement?",
-    "Is cryptocurrency adoption inevitable for global finance?",
-    "Should social media platforms be regulated as public utilities?",
-    "Will lab-grown meat replace traditional agriculture?",
-    "Should we colonize Mars or focus resources on Earth?"
-]
-
 # NATIVE FUNCTION CALLING: Define search functions for both Mistral and SambaNova
 SEARCH_FUNCTIONS = [
     {
@@ -1301,8 +1285,8 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
     
     * Visual roundtable of the AI models, including speech bubbles to see the discussion in real time.
     * MCP mode enabled to also use it directly in, for example, Claude Desktop (without the visual table).
-    * Includes Mistral (mistral-large-latest) via their API and the Models DeepSeek-R1, Meta-Llama-3.1-8B-Instruct and QwQ-32B via the SambaNova API.
-    * Research Agent to search via DuckDuckGo or Wikipedia, added as a tool for the models from Mistral and Llama.
+    * Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.1-8B-Instruct** and **QwQ-32B** via the SambaNova API.
+    * Research Agent to search via **DuckDuckGo** or **Wikipedia**, added as a tool for the models from Mistral and Llama.
     * Assign different roles to the models, the protocol they should follow, and decide the communication strategy.
     * Pick one model as the lead analyst (had the best results when picking Mistral).
     * Configure the amount of discussion rounds.
@@ -1354,7 +1338,8 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                     moderator_model = gr.Dropdown(
                         choices=["mistral", "sambanova_deepseek", "sambanova_llama", "sambanova_qwq"],
                         value="mistral",
-                        label="👨‍⚖️ Lead Analyst"
+                        label="👨‍⚖️ Lead Analyst",
+                        info="Mistral works best as Lead"
                     )
                 
                 rounds_input = gr.Slider(
@@ -1534,40 +1519,8 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - **Secure Communication**: All API calls use HTTPS encryption
         """)
     
-    with gr.Tab("📚 Usage Guide"):
+    with gr.Tab("📚 Documentation"):
         gr.Markdown("""
-        ## 🎯 How to Get Expert AI Analysis with Live Research
-                        
-        ### 🏆 **Professional Decision Questions**
-        
-        #### **💼 Business & Strategy**
-        - "Should our startup pivot to AI-first product development?"
-        - "Microservices vs monolith architecture for our scaling platform?"
-        - "Should we prioritize in-house development or partnerships for AI capabilities?"
-        - "What's the optimal pricing strategy for our SaaS product expansion?"
-        - "Should we target enterprise or SMB market segments first?"
-        
-        #### **🔬 Technology & Research**
-        - "What's the most promising approach to carbon capture technology?"
-        - "Should we bet on quantum computing for cryptography applications?"
-        - "Is edge computing essential for our IoT deployment strategy?"
-        - "React vs Vue vs Angular for our large-scale web application?"
-        - "Should we adopt GraphQL or stick with REST APIs?"
-        
-        #### **🌍 Policy & Society**
-        - "Should we prioritize geoengineering research over emissions reduction?"
-        - "Is nuclear energy essential for meeting climate goals?"
-        - "Should AI development be paused until alignment is solved?"
-        - "How should we regulate social media algorithm transparency?"
-        - "Should gene editing be allowed for human enhancement?"
-        
-        #### **🚀 Innovation & Future**
-        - "Will remote work fundamentally change innovation culture?"
-        - "Should we colonize Mars or focus resources on Earth?"
-        - "Is cryptocurrency adoption inevitable for global finance?"
-        - "Will lab-grown meat replace traditional agriculture?"
-        - "Should we trust AI with medical decision-making?"
-        
         ## 🎓 **Expert Role Assignments**
         
         #### **⚖️ Balanced (Recommended for Most Decisions)**
