@@ -1,6 +1,7 @@
 ---
 tags:
   - mcp-server-track
+  - agent-demo-track
   - consilium
 title: Consilium Mcp
 emoji: 🏢
