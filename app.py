@@ -1477,22 +1477,18 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         - **Mistral:** [console.mistral.ai](https://console.mistral.ai)
         - **SambaNova:** [cloud.sambanova.ai](https://cloud.sambanova.ai)
         
-        ### 🌐 Alternative: Environment Variables
+        ## Local Setups
+        
+        ### 🌐 Environment Variables
         ```bash
         export MISTRAL_API_KEY=your_key_here
         export SAMBANOVA_API_KEY=your_key_here
         export MODERATOR_MODEL=mistral
         ```
         
-        ### 🦙 SambaNova Expert Models (with Function Calling)
-        The platform includes **3 SambaNova specialists**:
-        - **DeepSeek-R1**: Advanced reasoning and strategic analysis
-        - **Meta-Llama-3.3-70B-Instruct**: Fast, efficient collaborative analysis + research calls
-        - **QwQ-32B**: Large-scale comprehensive evaluation
-        
         ### 📋 Dependencies
         ```bash
-        pip install gradio requests python-dotenv smolagents gradio-consilium-roundtable wikipedia openai
+        pip install -r requirements.txt
         ```
         ### Start
         ```bash
@@ -1511,12 +1507,6 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
           }
         }
         ```
-        
-        ### 🔒 Privacy & Security
-        - **Session Isolation**: Each user gets their own private analysis space
-        - **API Key Protection**: Keys are stored only in your browser session
-        - **No Global State**: Your analyses are not visible to other users
-        - **Secure Communication**: All API calls use HTTPS encryption
         """)
     
     with gr.Tab("📚 Documentation"):
