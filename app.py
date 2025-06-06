@@ -245,12 +245,12 @@ class VisualConsensusEngine:
                 'available': bool(mistral_key)
             },
             'sambanova_deepseek': {
-                'name': 'DeepSeek-V3',
+                'name': 'DeepSeek-R1',
                 'api_key': sambanova_key,
                 'available': bool(sambanova_key)
             },
             'sambanova_llama': {
-                'name': 'Meta-Llama-3.1-8B',
+                'name': 'Meta-Llama-3.3-70B-Instruct',
                 'api_key': sambanova_key,
                 'available': bool(sambanova_key)
             },
@@ -480,10 +480,10 @@ class VisualConsensusEngine:
                 )
                 model_mapping = {
                     'sambanova_deepseek': 'DeepSeek-R1',
-                    'sambanova_llama': 'Meta-Llama-3.1-8B-Instruct', 
+                    'sambanova_llama': 'Meta-Llama-3.3-70B-Instruct', 
                     'sambanova_qwq': 'QwQ-32B'
                 }
-                model_name = model_mapping.get(calling_model, 'Meta-Llama-3.1-8B-Instruct')
+                model_name = model_mapping.get(calling_model, 'Meta-Llama-3.3-70B-Instruct')
             
             final_completion = client.chat.completions.create(
                 model=model_name,
@@ -551,20 +551,19 @@ class VisualConsensusEngine:
             
             model_mapping = {
                 'sambanova_deepseek': 'DeepSeek-R1',
-                'sambanova_llama': 'Meta-Llama-3.1-8B-Instruct', 
+                'sambanova_llama': 'Meta-Llama-3.3-70B-Instruct', 
                 'sambanova_qwq': 'QwQ-32B'
             }
             
-            sambanova_model = model_mapping.get(model, 'Meta-Llama-3.1-8B-Instruct')
+            sambanova_model = model_mapping.get(model, 'Meta-Llama-3.3-70B-Instruct')
             print(f"Calling SambaNova model: {sambanova_model}")
             
             # Check if model supports function calling
             supports_functions = sambanova_model in [
-                'DeepSeek-V3-0324',
+                'DeepSeek-R1-0324',
                 'Meta-Llama-3.1-8B-Instruct',
                 'Meta-Llama-3.1-405B-Instruct', 
                 'Meta-Llama-3.3-70B-Instruct'
-                # QwQ-32B is NOT in this list, so it won't get function calling
             ]
             
             if supports_functions:
@@ -1006,7 +1005,7 @@ Your expert response:"""
             moderator_title = "Senior Advisor"
         elif decision_protocol in ['majority_voting', 'ranked_choice']:
             phase_name = "⚖️ Phase 3: Final Decision"
-            moderator_title = "Chief Analyst"
+            moderator_title = "Lead Analyst"
         else:
             phase_name = "📊 Phase 3: Expert Synthesis"
             moderator_title = "Lead Researcher"
@@ -1271,8 +1270,8 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
     
     models = {
         'Mistral Large': mistral_key,
-        'DeepSeek-V3': sambanova_key,
-        'Meta-Llama-3.1-8B': sambanova_key,
+        'DeepSeek-R1': sambanova_key,
+        'Meta-Llama-3.3-70B-Instruct': sambanova_key,
         'QwQ-32B': sambanova_key,
         'Research Agent': True
     }
@@ -1293,20 +1292,21 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
 with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
     # 🎭 Consilium: Multi-AI Expert Consensus Platform
-    
+
     **Watch expert AI models collaborate with live research to solve your most complex decisions**
     
-    This platform provides **rigorous multi-perspective analysis** with:
-    - 🎨 **Visual Expert Roundtable** - See AI specialists thinking and collaborating
-    - 🤖 **Multi-Model Expertise** - Mistral, DeepSeek, Llama, QwQ specialists
-    - 🔍 **Native Research Integration** - Expert AIs call research functions automatically
-    - 🎓 **Expert Role Assignment** - Advocates, analysts, advisors, researchers
-    - 🌐 **Strategic Communication** - Full mesh collaboration, hierarchical, sequential
-    - ⚖️ **Protocol-Based Decisions** - Consensus building, competitive analysis, expert synthesis
-    - 📊 **Live Data Integration** - Real-time web search and Wikipedia research
-    - 🔒 **Private Sessions** - Each user gets their own secure analysis space
+    This MCP server was built for the Gradio Agents and MCP Hackathon 2025. Additionally, I built a custom Gradio component for the roundtable (https://huggingface.co/spaces/azettl/gradio_consilium_roundtable).
     
-    **Perfect for:** Strategic planning, technical decisions, research synthesis, policy analysis
+    ## Features:
+    
+    * Visual roundtable of the AI models, including speech bubbles to see the discussion in real time.
+    * MCP mode enabled to also use it directly in, for example, Claude Desktop (without the visual table).
+    * Includes Mistral (mistral-large-latest) via their API and the Models DeepSeek-R1, Meta-Llama-3.1-8B-Instruct and QwQ-32B via the SambaNova API.
+    * Research Agent to search via DuckDuckGo or Wikipedia, added as a tool for the models from Mistral and Llama.
+    * Assign different roles to the models, the protocol they should follow, and decide the communication strategy.
+    * Pick one model as the lead analyst (had the best results when picking Mistral).
+    * Configure the amount of discussion rounds.
+    * After the discussion, the whole conversation and a final answer will be presented.
     """)
     
     # Hidden session state component
@@ -1502,7 +1502,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         ### 🦙 SambaNova Expert Models (with Function Calling)
         The platform includes **3 SambaNova specialists**:
         - **DeepSeek-R1**: Advanced reasoning and strategic analysis
-        - **Meta-Llama-3.1-8B**: Fast, efficient collaborative analysis + research calls
+        - **Meta-Llama-3.3-70B-Instruct**: Fast, efficient collaborative analysis + research calls
         - **QwQ-32B**: Large-scale comprehensive evaluation
         
         ### 📋 Dependencies
