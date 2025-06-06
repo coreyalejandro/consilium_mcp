@@ -13,4 +13,5 @@ app_file: app.py
 pinned: false
 ---
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+📼 Video UI: https://youtu.be/ciYLqI-Nawc
+📼 Video MCP: https://youtu.be/r92vFUXNg74
