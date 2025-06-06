@@ -1,4 +1,7 @@
 ---
+tags:
+  - mcp-server-track
+  - consilium
 title: Consilium Mcp
 emoji: 🏢
 colorFrom: yellow
