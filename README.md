@@ -13,7 +13,7 @@ app_file: app.py
 pinned: false
 ---
 
-Includes Mistral (mistral-large-latest) via their API and the Models DeepSeek-R1, Meta-Llama-3.1-8B-Instruct and QwQ-32B via the SambaNova API.
+Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.3-70B-Instruct** and **QwQ-32B** via the SambaNova API.
 
 
 📼 Video UI: https://youtu.be/ciYLqI-Nawc 
