@@ -3,7 +3,7 @@ tags:
 - mcp-server-track
 - agent-demo-track
 - consilium
-title: Consilium Mcp
+title: Consilium MCP Server
 emoji: 🏢
 colorFrom: yellow
 colorTo: blue
@@ -11,6 +11,7 @@ sdk: gradio
 sdk_version: 5.33.0
 app_file: app.py
 pinned: false
+short_description: Multi-AI Expert Consensus Platform
 ---
 
 Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.3-70B-Instruct** and **QwQ-32B** via the SambaNova API.
