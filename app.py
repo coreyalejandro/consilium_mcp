@@ -26,6 +26,14 @@ MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
 # Session-based storage for isolated discussions
 user_sessions: Dict[str, Dict] = {}
 
+# Model Images
+avatar_images = {
+    "QwQ-32B": "https://cdn-avatars.huggingface.co/v1/production/uploads/620760a26e3b7210c2ff1943/-s1gyJfvbE1RgO5iBeNOi.png",
+    "DeepSeek-R1": "https://logosandtypes.com/wp-content/uploads/2025/02/deepseek.svg",
+    "Mistral Large": "https://logosandtypes.com/wp-content/uploads/2025/02/mistral-ai.svg",
+    "Meta-Llama-3.3-70B-Instruct": "https://registry.npmmirror.com/@lobehub/icons-static-png/1.46.0/files/dark/meta-color.png",
+}
+
 # NATIVE FUNCTION CALLING: Define search functions for both Mistral and SambaNova
 SEARCH_FUNCTIONS = [
     {
@@ -742,7 +750,8 @@ class VisualConsensusEngine:
             "messages": [],
             "currentSpeaker": None,
             "thinking": [],
-            "showBubbles": []
+            "showBubbles": [],
+            "avatarImages": avatar_images
         })
         
         all_messages = []
@@ -762,7 +771,8 @@ class VisualConsensusEngine:
                 "messages": all_messages,
                 "currentSpeaker": None,
                 "thinking": [self.models[model]['name']],
-                "showBubbles": existing_bubbles  # KEEP EXISTING BUBBLES
+                "showBubbles": existing_bubbles,
+                "avatarImages": avatar_images
             })
             
             time.sleep(1)
@@ -809,7 +819,8 @@ Provide your expert analysis:"""
                 "messages": all_messages,
                 "currentSpeaker": self.models[model]['name'],
                 "thinking": [],
-                "showBubbles": existing_bubbles  # KEEP EXISTING BUBBLES
+                "showBubbles": existing_bubbles,
+                "avatarImages": avatar_images
             })
             
             time.sleep(2)
@@ -861,7 +872,8 @@ Provide your expert analysis:"""
                 "messages": all_messages,
                 "currentSpeaker": None,
                 "thinking": [],
-                "showBubbles": responded_speakers
+                "showBubbles": responded_speakers,
+                "avatarImages": avatar_images
             })
             
             time.sleep(2)  # Longer pause to see the response
@@ -884,7 +896,8 @@ Provide your expert analysis:"""
                         "messages": all_messages,
                         "currentSpeaker": None,
                         "thinking": [self.models[model]['name']],
-                        "showBubbles": existing_bubbles
+                        "showBubbles": existing_bubbles,
+                        "avatarImages": avatar_images
                     })
                     
                     time.sleep(1)
@@ -932,7 +945,8 @@ Your expert response:"""
                         "messages": all_messages,
                         "currentSpeaker": self.models[model]['name'],
                         "thinking": [],
-                        "showBubbles": existing_bubbles
+                        "showBubbles": existing_bubbles,
+                        "avatarImages": avatar_images
                     })
                     
                     time.sleep(2)
@@ -978,7 +992,8 @@ Your expert response:"""
                         "messages": all_messages,
                         "currentSpeaker": None,
                         "thinking": [],
-                        "showBubbles": responded_speakers
+                        "showBubbles": responded_speakers,
+                        "avatarImages": avatar_images
                     })
                     
                     time.sleep(1)
@@ -1007,7 +1022,8 @@ Your expert response:"""
             "messages": all_messages,
             "currentSpeaker": None,
             "thinking": expert_names,
-            "showBubbles": existing_bubbles
+            "showBubbles": existing_bubbles,
+            "avatarImages": avatar_images
         })
         
         time.sleep(2)
@@ -1084,7 +1100,8 @@ Provide your synthesis:"""
             "messages": all_messages,
             "currentSpeaker": "Consilium",
             "thinking": [],
-            "showBubbles": existing_bubbles
+            "showBubbles": existing_bubbles,
+            "avatarImages": avatar_images
         })
         
         # Call moderator model - may also trigger function calls
@@ -1135,7 +1152,8 @@ Provide your synthesis:"""
             "messages": all_messages,
             "currentSpeaker": None,
             "thinking": [],
-            "showBubbles": responded_speakers
+            "showBubbles": responded_speakers,
+            "avatarImages": avatar_images
         })
         
         log_event('phase', content="✅ Expert Analysis Complete")
@@ -1358,13 +1376,15 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
             with gr.Column(scale=2):
                 # The visual roundtable component
                 roundtable = consilium_roundtable(
-                    label="🎭 AI Expert Roundtable with Research Agent",
+                    label="AI Expert Roundtable",
+                    label_icon="https://huggingface.co/front/assets/huggingface_logo-noborder.svg",
                     value=json.dumps({
                         "participants": [],
                         "messages": [],
                         "currentSpeaker": None,
                         "thinking": [],
-                        "showBubbles": []
+                        "showBubbles": [],
+                        "avatarImages": avatar_images
                     })
                 )
         
@@ -1417,7 +1437,8 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
                 "messages": [],
                 "currentSpeaker": None,
                 "thinking": [],
-                "showBubbles": []
+                "showBubbles": [],
+                "avatarImages": avatar_images
             })
         
         gr.Timer(1.0).tick(refresh_roundtable, inputs=[session_state], outputs=[roundtable])
