@@ -1,14 +1,14 @@
 ---
 tags:
-  - mcp-server-track
-  - agent-demo-track
-  - consilium
+- mcp-server-track
+- agent-demo-track
+- consilium
 title: Consilium Mcp
 emoji: 🏢
 colorFrom: yellow
 colorTo: blue
 sdk: gradio
-sdk_version: 5.32.1
+sdk_version: 5.33.0
 app_file: app.py
 pinned: false
 ---
