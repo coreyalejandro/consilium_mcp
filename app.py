@@ -1306,7 +1306,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
     
     * Visual roundtable of the AI models, including speech bubbles to see the discussion in real time.
     * MCP mode enabled to also use it directly in, for example, Claude Desktop (without the visual table).
-    * Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.1-8B-Instruct** and **QwQ-32B** via the SambaNova API.
+    * Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.3-70B-Instruct** and **QwQ-32B** via the SambaNova API.
     * Research Agent to search via **DuckDuckGo** or **Wikipedia**, added as a tool for the models from Mistral and Llama.
     * Assign different roles to the models, the protocol they should follow, and decide the communication strategy.
     * Pick one model as the lead analyst (had the best results when picking Mistral).
