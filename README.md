@@ -13,5 +13,9 @@ app_file: app.py
 pinned: false
 ---
 
-📼 Video UI: https://youtu.be/ciYLqI-Nawc
+Includes Mistral (mistral-large-latest) via their API and the Models DeepSeek-R1, Meta-Llama-3.1-8B-Instruct and QwQ-32B via the SambaNova API.
+
+
+📼 Video UI: https://youtu.be/ciYLqI-Nawc 
+
 📼 Video MCP: https://youtu.be/r92vFUXNg74
