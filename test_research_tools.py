@@ -35,7 +35,6 @@ def test_tool_imports():
         from research_tools.arxiv_search import ArxivSearchTool
         from research_tools.github_search import GitHubSearchTool
         from research_tools.sec_search import SECSearchTool
-        from research_tools.scholar_search import GoogleScholarTool
         
         print("✅ All tool imports successful")
         return True
@@ -108,8 +107,7 @@ def test_individual_tools():
             'wikipedia': ('artificial intelligence', {}),
             'arxiv': ('machine learning', {}),
             'github': ('python', {}),
-            'sec': ('Apple', {}),  # Remove max_results for SEC
-            'scholar': ('deep learning', {})
+            'sec': ('Apple', {})
         }
         
         for tool_name, (query, kwargs) in test_queries.items():
@@ -262,7 +260,6 @@ def test_dependency_check():
         'requests': 'HTTP requests',
         'xml.etree.ElementTree': 'XML parsing (built-in)',
         'wikipedia': 'Wikipedia search',
-        'scholarly': 'Google Scholar (optional)',
         'smolagents': 'Web search agents'
     }
     

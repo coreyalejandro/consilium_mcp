@@ -65,7 +65,6 @@ class BaseTool(ABC):
         """Check source authority and credibility indicators"""
         authority_indicators = {
             'arxiv': 0.9,
-            'scholar': 0.9,
             'sec': 0.95,
             'github': 0.7,
             'wikipedia': 0.8,

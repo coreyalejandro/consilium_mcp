@@ -5,7 +5,6 @@ from .wikipedia_search import WikipediaSearchTool
 from .arxiv_search import ArxivSearchTool
 from .github_search import GitHubSearchTool
 from .sec_search import SECSearchTool
-from .scholar_search import GoogleScholarTool
 from .research_agent import EnhancedResearchAgent
 
 __all__ = [
@@ -15,6 +14,5 @@ __all__ = [
     'ArxivSearchTool',
     'GitHubSearchTool', 
     'SECSearchTool',
-    'GoogleScholarTool',
     'EnhancedResearchAgent'
 ]

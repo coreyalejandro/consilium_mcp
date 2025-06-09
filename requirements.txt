@@ -8,4 +8,3 @@ duckduckgo-search
 wikipedia
 gradio-consilium-roundtable
 openai
-scholarly

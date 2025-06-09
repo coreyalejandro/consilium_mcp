@@ -392,33 +392,10 @@ class VisualConsensusEngine:
                 self.update_research_progress(f"Wikipedia search complete - found {len(result)} characters")
                 
             elif function_name == "search_academic":
-                source = arguments.get("source", "both")
-                
-                if source == "arxiv":
-                    self.update_research_progress("Connecting to arXiv preprint server...")
-                    self.update_research_progress("Searching academic papers on arXiv...")
-                    result = self.search_agent.tools['arxiv'].search(arguments["query"])
-                    self.update_research_progress(f"arXiv search complete - found {len(result)} characters")
-                    
-                elif source == "scholar":
-                    self.update_research_progress("Connecting to Google Scholar...")
-                    self.update_research_progress("Searching peer-reviewed research...")
-                    result = self.search_agent.tools['scholar'].search(arguments["query"])
-                    self.update_research_progress(f"Google Scholar search complete - found {len(result)} characters")
-                    
-                else:  # both sources
-                    self.update_research_progress("Connecting to arXiv preprint server...")
-                    self.update_research_progress("Searching academic papers on arXiv...")
-                    arxiv_result = self.search_agent.tools['arxiv'].search(arguments["query"])
-                    self.update_research_progress(f"arXiv complete ({len(arxiv_result)} chars) - now searching Google Scholar...")
-                    
-                    self.update_research_progress("Connecting to Google Scholar...")
-                    self.update_research_progress("Searching peer-reviewed research...")
-                    scholar_result = self.search_agent.tools['scholar'].search(arguments["query"])
-                    self.update_research_progress("Combining arXiv and Google Scholar results...")
-                    
-                    result = f"{arxiv_result}\n\n{scholar_result}"
-                    self.update_research_progress(f"Academic search complete - combined {len(result)} characters")
+                self.update_research_progress("Connecting to arXiv preprint server...")
+                self.update_research_progress("Searching academic papers on arXiv...")
+                result = self.search_agent.tools['arxiv'].search(arguments["query"])
+                self.update_research_progress(f"arXiv search complete - found {len(result)} characters")
                     
             elif function_name == "search_technology_trends":
                 self.update_research_progress("Connecting to GitHub API...")
@@ -1477,7 +1454,7 @@ with gr.Blocks(title="🎭 Consilium: Multi-AI Expert Consensus Platform", theme
     * Visual roundtable of the AI models, including speech bubbles to see the discussion in real time.
     * MCP mode enabled to also use it directly in, for example, Claude Desktop (without the visual table).
     * Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.3-70B-Instruct** and **QwQ-32B** via the SambaNova API.
-    * Research Agent with 6 sources (**Web Search**, **Wikipedia**, **arXiv**, **GitHub**, **SEC EDGAR**, **Google Scholar**) for comprehensive live research.
+    * Research Agent with 6 sources (**Web Search**, **Wikipedia**, **arXiv**, **GitHub**, **SEC EDGAR**) for comprehensive live research.
     * Assign different roles to the models, the protocol they should follow, and decide the communication strategy.
     * Pick one model as the lead analyst (had the best results when picking Mistral).
     * Configure the amount of discussion rounds.
@@ -1704,32 +1681,6 @@ with gr.Blocks(title="🎭 Consilium: Multi-AI Expert Consensus Platform", theme
         """)
     
     with gr.Tab("📚 Documentation"):
-        gr.Markdown("""
-        ## 🔬 **Research Capabilities**
-
-        ### **🌐 Multi-Source Research**
-        - **DuckDuckGo Web Search**: Current events, news, real-time information
-        - **Wikipedia**: Authoritative background and encyclopedic data  
-        - **arXiv**: Academic papers and scientific research preprints
-        - **Google Scholar**: Peer-reviewed research and citation analysis
-        - **GitHub**: Technology trends, adoption patterns, developer activity
-        - **SEC EDGAR**: Public company financial data and regulatory filings
-
-        ### **🎯 Smart Research Routing**
-        The system automatically routes queries to the most appropriate sources:
-        - **Academic queries** → arXiv + Google Scholar
-        - **Technology questions** → GitHub + Web Search
-        - **Company research** → SEC filings + Web Search  
-        - **Current events** → Web Search + Wikipedia
-        - **Deep research** → Multi-source synthesis with quality scoring
-
-        ### **📊 Research Quality Scoring**
-        Each research result is scored on:
-        - **Recency** (0-1): How current is the information
-        - **Authority** (0-1): Source credibility and reliability
-        - **Specificity** (0-1): Quantitative data and specific details
-        - **Relevance** (0-1): How well it matches the query
-        """)
         gr.Markdown("""
         ## 🎓 **Expert Role Assignments**
         

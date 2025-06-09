@@ -48,19 +48,13 @@ ENHANCED_SEARCH_FUNCTIONS = [
         "type": "function",
         "function": {
             "name": "search_academic",
-            "description": "Search academic papers and research on arXiv and Google Scholar for scientific evidence",
+            "description": "Search academic papers and research on arXiv for scientific evidence",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
                         "description": "Academic research query to find peer-reviewed papers and scientific studies"
-                    },
-                    "source": {
-                        "type": "string",
-                        "enum": ["arxiv", "scholar", "both"],
-                        "description": "Academic source to search - arXiv for preprints, Scholar for citations, both for comprehensive",
-                        "default": "both"
                     }
                 },
                 "required": ["query"]
@@ -117,7 +111,7 @@ ENHANCED_SEARCH_FUNCTIONS = [
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": ["web", "wikipedia", "arxiv", "scholar", "github", "sec"]
+                            "enum": ["web", "wikipedia", "arxiv", "github", "sec"]
                         },
                         "description": "Priority list of sources to focus on for this research",
                         "default": []

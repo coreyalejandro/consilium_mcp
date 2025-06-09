@@ -11,7 +11,6 @@ from .wikipedia_search import WikipediaSearchTool
 from .arxiv_search import ArxivSearchTool
 from .github_search import GitHubSearchTool
 from .sec_search import SECSearchTool
-from .scholar_search import GoogleScholarTool
 
 
 class EnhancedResearchAgent:
@@ -24,8 +23,7 @@ class EnhancedResearchAgent:
             'wikipedia': WikipediaSearchTool(),
             'arxiv': ArxivSearchTool(),
             'github': GitHubSearchTool(),
-            'sec': SECSearchTool(),
-            'scholar': GoogleScholarTool()
+            'sec': SECSearchTool()
         }
         
         # Tool availability status
@@ -92,7 +90,7 @@ class EnhancedResearchAgent:
         for tool_name, tool in self.tools.items():
             if tool.should_use_for_query(query):
                 # Return first matching tool based on priority order
-                priority_order = ['arxiv', 'sec', 'github', 'scholar', 'wikipedia', 'web']
+                priority_order = ['arxiv', 'sec', 'github', 'wikipedia', 'web']
                 if tool_name in priority_order[:3]:  # High-priority specialized tools
                     return tool_name
         
@@ -123,7 +121,7 @@ class EnhancedResearchAgent:
         # Ensure we don't overwhelm with too many sources
         if len(relevant_tools) > 4:
             # Prioritize specialized tools
-            priority_order = ['arxiv', 'sec', 'github', 'scholar', 'wikipedia', 'web']
+            priority_order = ['arxiv', 'sec', 'github', 'wikipedia', 'web']
             relevant_tools = [tool for tool in priority_order if tool in relevant_tools][:4]
         
         return relevant_tools
