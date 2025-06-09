@@ -5,6 +5,7 @@ markdownify
 requests
 python-dotenv
 duckduckgo-search
-wikipedia-api
+wikipedia
 gradio-consilium-roundtable
 openai
+scholarly

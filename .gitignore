@@ -1,0 +1,5 @@
+
+.env
+/.gradio
+/research_tools/__pycache__
+/__pycache__

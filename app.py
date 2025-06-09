@@ -14,6 +14,8 @@ import queue
 import uuid
 from gradio_consilium_roundtable import consilium_roundtable
 from smolagents import CodeAgent, DuckDuckGoSearchTool, FinalAnswerTool, InferenceClientModel, VisitWebpageTool, Tool
+from research_tools import EnhancedResearchAgent
+from enhanced_search_functions import ENHANCED_SEARCH_FUNCTIONS
 
 # Load environment variables
 load_dotenv()
@@ -33,133 +35,6 @@ avatar_images = {
     "Mistral Large": "https://logosandtypes.com/wp-content/uploads/2025/02/mistral-ai.svg",
     "Meta-Llama-3.3-70B-Instruct": "https://registry.npmmirror.com/@lobehub/icons-static-png/1.46.0/files/dark/meta-color.png",
 }
-
-# NATIVE FUNCTION CALLING: Define search functions for both Mistral and SambaNova
-SEARCH_FUNCTIONS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_web",
-            "description": "Search the web for current information and data relevant to the decision being analyzed",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query to find current information relevant to the expert analysis"
-                    }
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {
-        "type": "function", 
-        "function": {
-            "name": "search_wikipedia",
-            "description": "Search Wikipedia for comprehensive background information and authoritative data",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {
-                        "type": "string",
-                        "description": "The topic to research on Wikipedia for comprehensive background information"
-                    }
-                },
-                "required": ["topic"]
-            }
-        }
-    }
-]
-
-class WikipediaTool(Tool):
-    name = "wikipedia_search"
-    description = "Search Wikipedia for comprehensive information on any topic"
-    inputs = {"query": {"type": "string", "description": "The topic to search for on Wikipedia"}}
-    output_type = "string"
-    
-    def forward(self, query: str) -> str:
-        try:
-            import wikipedia
-            # Search for the topic
-            search_results = wikipedia.search(query, results=3)
-            if not search_results:
-                return f"No Wikipedia articles found for: {query}"
-            
-            # Get the first article
-            page = wikipedia.page(search_results[0])
-            summary = page.summary[:1000] + "..." if len(page.summary) > 1000 else page.summary
-            
-            return f"**Wikipedia: {page.title}**\n\n{summary}\n\nSource: {page.url}"
-        except Exception as e:
-            return f"Wikipedia search error: {str(e)}"
-
-class WebSearchAgent:
-    def __init__(self):
-        try:
-            self.agent = CodeAgent(
-                tools=[
-                    DuckDuckGoSearchTool(), 
-                    VisitWebpageTool(),
-                    WikipediaTool(),
-                    FinalAnswerTool()
-                ], 
-                model=InferenceClientModel(),
-                max_steps=3,
-                verbosity_level=0
-            )
-        except Exception as e:
-            print(f"Warning: Could not initialize search agent: {e}")
-            self.agent = None
-    
-    def search(self, query: str, max_results: int = 5) -> str:
-        """Use the CodeAgent to perform comprehensive web search and analysis"""
-        if not self.agent:
-            return f"Research agent not available. Please check dependencies."
-        
-        try:
-            # Simplified prompt for TinyLlama to avoid code parsing issues
-            agent_prompt = f"Search for information about: {query}. Provide a brief summary of findings."
-            
-            # Run the agent
-            result = self.agent.run(agent_prompt)
-            
-            # Clean and validate the result
-            if result and isinstance(result, str) and len(result.strip()) > 0:
-                # Remove any code-like syntax that might cause parsing errors
-                cleaned_result = result.replace('```', '').replace('`', '').strip()
-                return f"**Web Research Results for: {query}**\n\n{cleaned_result}"
-            else:
-                return f"**Research for: {query}**\n\nNo clear results found. Please try a different search term."
-            
-        except Exception as e:
-            # More robust fallback - return something useful instead of failing
-            error_msg = str(e)
-            if "max steps" in error_msg.lower():
-                return f"**Research for: {query}**\n\nResearch completed but reached complexity limit. Basic analysis: This query relates to {query.lower()} and would benefit from further investigation."
-            elif "syntax" in error_msg.lower():
-                return f"**Research for: {query}**\n\nResearch encountered formatting issues but found relevant information about {query.lower()}."
-            else:
-                return f"**Research for: {query}**\n\nResearch temporarily unavailable. Error: {error_msg[:100]}..."
-    
-    def search_wikipedia(self, topic: str) -> str:
-        """Search Wikipedia for comprehensive information"""
-        try:
-            wiki_tool = WikipediaTool()
-            result = wiki_tool.forward(topic)
-            
-            # Ensure we return a proper string and clean it
-            if result and isinstance(result, str):
-                # Clean any code syntax that might cause issues
-                cleaned_result = result.replace('```', '').replace('`', '').strip()
-                return cleaned_result
-            elif result:
-                return str(result)
-            else:
-                return f"**Wikipedia Research for: {topic}**\n\nNo results found, but this topic likely relates to {topic.lower()} and warrants further investigation."
-                
-        except Exception as e:
-            return f"**Wikipedia Research for: {topic}**\n\nResearch temporarily unavailable but {topic.lower()} is a relevant topic for analysis. Error: {str(e)[:100]}..."
 
 def get_session_id(request: gr.Request = None) -> str:
     """Generate or retrieve session ID"""
@@ -218,7 +93,7 @@ def update_session_api_keys(mistral_key, sambanova_key, session_id_state, reques
 class VisualConsensusEngine:
     def __init__(self, moderator_model: str = None, update_callback=None, session_id: str = None):
         self.moderator_model = moderator_model or MODERATOR_MODEL
-        self.search_agent = WebSearchAgent()
+        self.search_agent = EnhancedResearchAgent()
         self.update_callback = update_callback
         self.session_id = session_id
         
@@ -314,54 +189,81 @@ class VisualConsensusEngine:
         # PRESERVE existing bubbles throughout research
         existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
         
-        # Step 1: Show expert waiting for research
-        waiting_message = {
+        # Get function display name
+        function_display = {
+            'search_web': 'Web Search',
+            'search_wikipedia': 'Wikipedia',
+            'search_academic': 'Academic Papers',
+            'search_technology_trends': 'Technology Trends',
+            'search_financial_data': 'Financial Data',
+            'multi_source_research': 'Multi-Source Research'
+        }.get(function, function.replace('_', ' ').title())
+        
+        # Step 1: Show expert requesting research
+        request_message = {
             "speaker": speaker,
-            "text": f"🔍 Requesting research: {query}",
+            "text": f"🔍 **Research Request**: {function_display}\n📝 Query: \"{query}\"",
             "type": "research_request"
         }
-        all_messages.append(waiting_message)
+        all_messages.append(request_message)
         
         self.update_visual_state({
             "participants": participants,
             "messages": all_messages,
             "currentSpeaker": speaker,
             "thinking": [],
-            "showBubbles": existing_bubbles + [speaker]  # PRESERVE + ADD CURRENT
+            "showBubbles": existing_bubbles + [speaker]
         })
-        time.sleep(1)
+        time.sleep(1.5)
         
-        # Step 2: Show Research Agent thinking
+        # Step 2: Research Agent starts thinking
         self.update_visual_state({
             "participants": participants,
             "messages": all_messages,
             "currentSpeaker": None,
             "thinking": ["Research Agent"],
-            "showBubbles": existing_bubbles + [speaker, "Research Agent"]  # PRESERVE ALL
+            "showBubbles": existing_bubbles + [speaker, "Research Agent"]
         })
-        time.sleep(1)
+        time.sleep(2)
         
-        # Step 3: Show Research Agent working
-        research_message = {
+        # Step 3: Research Agent working - show detailed activity
+        working_message = {
             "speaker": "Research Agent",
-            "text": f"🔍 Researching: {function.replace('_', ' ')} - '{query}'",
+            "text": f"🔍 **Conducting Research**: {function_display}\n📊 Analyzing: \"{query}\"\n⏳ Please wait while I gather information...",
             "type": "research_activity"
         }
-        all_messages.append(research_message)
+        all_messages.append(working_message)
         
         self.update_visual_state({
             "participants": participants,
             "messages": all_messages,
             "currentSpeaker": "Research Agent",
             "thinking": [],
-            "showBubbles": existing_bubbles + [speaker, "Research Agent"]  # PRESERVE ALL
+            "showBubbles": existing_bubbles + [speaker, "Research Agent"]
         })
-        time.sleep(2)  # Longer pause to see research happening
+        time.sleep(3)  # Longer pause to see research happening
         
-        # Step 4: Research Agent goes back to quiet, expert processes results
+        # Step 4: Research completion notification
+        completion_message = {
+            "speaker": "Research Agent",
+            "text": f"✅ **Research Complete**: {function_display}\n📋 Results ready for analysis",
+            "type": "research_complete"
+        }
+        all_messages.append(completion_message)
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": "Research Agent",
+            "thinking": [],
+            "showBubbles": existing_bubbles + [speaker, "Research Agent"]
+        })
+        time.sleep(1.5)
+        
+        # Step 5: Expert processing results
         processing_message = {
             "speaker": speaker,
-            "text": f"📊 Processing research results...",
+            "text": f"📊 **Processing Research Results**\n🧠 Integrating {function_display} findings into analysis...",
             "type": "research_processing"
         }
         all_messages.append(processing_message)
@@ -371,12 +273,33 @@ class VisualConsensusEngine:
             "messages": all_messages,
             "currentSpeaker": speaker,
             "thinking": [],
-            "showBubbles": existing_bubbles + [speaker]  # PRESERVE EXISTING + CURRENT
+            "showBubbles": existing_bubbles + [speaker, "Research Agent"]  # Keep Research Agent visible longer
         })
-        time.sleep(1)
+        time.sleep(2)
+
+    def log_research_activity(self, speaker: str, function: str, query: str, result: str, log_function=None):
+        """Log research activity to the discussion log"""
+        if log_function:
+            # Log the research request
+            log_function('research_request', 
+                        speaker="Research Agent", 
+                        content=f"Research requested by {speaker}: {function.replace('_', ' ').title()} - '{query}'",
+                        function=function,
+                        query=query,
+                        requesting_expert=speaker)
+            
+            # Log the research result (truncated for readability)
+            result_preview = result[:300] + "..." if len(result) > 300 else result
+            log_function('research_result', 
+                        speaker="Research Agent", 
+                        content=f"Research completed: {function.replace('_', ' ').title()}\n\n{result_preview}",
+                        function=function,
+                        query=query,
+                        full_result=result,
+                        requesting_expert=speaker)
     
     def handle_function_calls(self, completion, original_prompt: str, calling_model: str) -> str:
-        """UNIFIED function call handler for both Mistral and SambaNova"""
+        """UNIFIED function call handler with enhanced research capabilities"""
         
         # Check if completion is valid
         if not completion or not completion.choices or len(completion.choices) == 0:
@@ -387,10 +310,8 @@ class VisualConsensusEngine:
         
         # If no function calls, return regular response
         if not hasattr(message, 'tool_calls') or not message.tool_calls:
-            # EXTRACT CONTENT PROPERLY
             content = message.content
             if isinstance(content, list):
-                # Handle structured content (like from Mistral)
                 text_parts = []
                 for part in content:
                     if isinstance(part, dict) and 'text' in part:
@@ -422,21 +343,30 @@ class VisualConsensusEngine:
                 arguments = json.loads(tool_call.function.arguments)
                 
                 # Show research activity in UI
-                query_param = arguments.get("query") or arguments.get("topic")
+                query_param = arguments.get("query") or arguments.get("topic") or arguments.get("technology") or arguments.get("company")
                 if query_param:
                     self.show_research_activity(calling_model_name, function_name, query_param)
                 
-                # Execute the function
-                if function_name == "search_web":
-                    result = self.search_agent.search(arguments["query"])
-                elif function_name == "search_wikipedia":
-                    result = self.search_agent.search_wikipedia(arguments["topic"])
-                else:
-                    result = f"Unknown function: {function_name}"
+                # Execute the enhanced research functions
+                result = self._execute_research_function(function_name, arguments)
                 
-                # Ensure result is a string, not an object
+                # Ensure result is a string
                 if not isinstance(result, str):
                     result = str(result)
+
+                # Log the research activity (with access to session log function)
+                session = get_or_create_session_state(self.session_id)
+                def session_log_function(event_type, speaker="", content="", **kwargs):
+                    session["discussion_log"].append({
+                        'type': event_type,
+                        'speaker': speaker,
+                        'content': content,
+                        'timestamp': datetime.now().strftime('%H:%M:%S'),
+                        **kwargs
+                    })
+
+                if query_param and result:
+                    self.log_research_activity(calling_model_name, function_name, query_param, result, session_log_function)
                 
                 # Add function result to conversation
                 messages.append({
@@ -447,7 +377,6 @@ class VisualConsensusEngine:
                 
             except Exception as e:
                 print(f"Error processing tool call: {str(e)}")
-                # Add error result to conversation
                 messages.append({
                     "role": "tool", 
                     "tool_call_id": tool_call.id,
@@ -487,7 +416,6 @@ class VisualConsensusEngine:
             if final_completion and final_completion.choices and len(final_completion.choices) > 0:
                 final_content = final_completion.choices[0].message.content
                 
-                # HANDLE STRUCTURED CONTENT FROM FINAL RESPONSE TOO
                 if isinstance(final_content, list):
                     text_parts = []
                     for part in final_content:
@@ -506,6 +434,42 @@ class VisualConsensusEngine:
         except Exception as e:
             print(f"Error in follow-up completion for {calling_model}: {str(e)}")
             return message.content or "Analysis completed with research integration."
+
+    def _execute_research_function(self, function_name: str, arguments: dict) -> str:
+        """Execute research function with enhanced capabilities"""
+        try:
+            if function_name == "search_web":
+                depth = arguments.get("depth", "standard")
+                return self.search_agent.search(arguments["query"], depth)
+                
+            elif function_name == "search_wikipedia":
+                return self.search_agent.search_wikipedia(arguments["topic"])
+                
+            elif function_name == "search_academic":
+                source = arguments.get("source", "both")
+                if source == "arxiv":
+                    return self.search_agent.tools['arxiv'].search(arguments["query"])
+                elif source == "scholar":
+                    return self.search_agent.tools['scholar'].search(arguments["query"])
+                else:  # both
+                    arxiv_result = self.search_agent.tools['arxiv'].search(arguments["query"])
+                    scholar_result = self.search_agent.tools['scholar'].search(arguments["query"])
+                    return f"{arxiv_result}\n\n{scholar_result}"
+                    
+            elif function_name == "search_technology_trends":
+                return self.search_agent.tools['github'].search(arguments["technology"])
+                
+            elif function_name == "search_financial_data":
+                return self.search_agent.tools['sec'].search(arguments["company"])
+                
+            elif function_name == "multi_source_research":
+                return self.search_agent.search(arguments["query"], "deep")
+                
+            else:
+                return f"Unknown research function: {function_name}"
+                
+        except Exception as e:
+            return f"Research function error: {str(e)}"
     
     def call_model(self, model: str, prompt: str, context: str = "") -> Optional[str]:
         """Enhanced model calling with native function calling support"""
@@ -562,7 +526,7 @@ class VisualConsensusEngine:
                 completion = client.chat.completions.create(
                     model=sambanova_model,
                     messages=[{"role": "user", "content": prompt}],
-                    tools=SEARCH_FUNCTIONS,
+                    tools=ENHANCED_SEARCH_FUNCTIONS,
                     tool_choice="auto",
                     max_tokens=1000,
                     temperature=0.7
@@ -614,7 +578,7 @@ class VisualConsensusEngine:
             completion = client.chat.completions.create(
                 model='mistral-large-latest',
                 messages=[{"role": "user", "content": prompt}],
-                tools=SEARCH_FUNCTIONS,
+                tools=ENHANCED_SEARCH_FUNCTIONS,
                 tool_choice="auto",
                 max_tokens=1000,
                 temperature=0.7
@@ -802,7 +766,7 @@ ANALYSIS REQUIREMENTS:
 - {action_prompt}
 - {stakes}
 - Use specific examples, data, and evidence
-- If you need current information or research, you can search the web or Wikipedia
+- If you need current information or research, you can search the web, Wikipedia, academic papers, technology trends, or financial data
 - Maximum 200 words of focused analysis
 - End with "Position: [YOUR CLEAR STANCE]" and "Confidence: X/10"
 
@@ -1222,7 +1186,7 @@ def run_consensus_discussion_session(question: str, discussion_rounds: int = 3,
 - **Research Integration:** Native function calling with live data
 - **Session ID:** {session_id[:3]}...
 
-*Generated by Consilium Visual AI Consensus Platform*"""
+*Generated by Consilium: Multi-AI Expert Consensus Platform*"""
     
     # Format session-specific discussion log
     formatted_log = format_session_discussion_log(session["discussion_log"])
@@ -1242,10 +1206,13 @@ def format_session_discussion_log(discussion_log: list) -> str:
     
     for entry in discussion_log:
         timestamp = entry.get('timestamp', datetime.now().strftime('%H:%M:%S'))
+        
         if entry['type'] == 'thinking':
             formatted_log += f"**{timestamp}** 🤔 **{entry['speaker']}** is analyzing...\n\n"
+            
         elif entry['type'] == 'speaking':
             formatted_log += f"**{timestamp}** 💬 **{entry['speaker']}** is presenting...\n\n"
+            
         elif entry['type'] == 'message':
             formatted_log += f"**{timestamp}** 📋 **{entry['speaker']}** ({entry.get('role', 'standard')}):\n"
             formatted_log += f"> {entry['content']}\n"
@@ -1253,6 +1220,28 @@ def format_session_discussion_log(discussion_log: list) -> str:
                 formatted_log += f"*Confidence: {entry['confidence']}/10*\n\n"
             else:
                 formatted_log += "\n"
+                
+        elif entry['type'] == 'research_request':
+            function_name = entry.get('function', 'Unknown')
+            query = entry.get('query', 'Unknown query')
+            requesting_expert = entry.get('requesting_expert', 'Unknown expert')
+            formatted_log += f"**{timestamp}** 🔍 **Research Agent** - Research Request:\n"
+            formatted_log += f"> **Function:** {function_name.replace('_', ' ').title()}\n"
+            formatted_log += f"> **Query:** \"{query}\"\n"
+            formatted_log += f"> **Requested by:** {requesting_expert}\n\n"
+            
+        elif entry['type'] == 'research_result':
+            function_name = entry.get('function', 'Unknown')
+            query = entry.get('query', 'Unknown query')
+            requesting_expert = entry.get('requesting_expert', 'Unknown expert')
+            full_result = entry.get('full_result', entry.get('content', 'No result'))
+            formatted_log += f"**{timestamp}** 📊 **Research Agent** - Research Results:\n"
+            formatted_log += f"> **Function:** {function_name.replace('_', ' ').title()}\n"
+            formatted_log += f"> **Query:** \"{query}\"\n"
+            formatted_log += f"> **For Expert:** {requesting_expert}\n\n"
+            formatted_log += f"**Research Results:**\n"
+            formatted_log += f"```\n{full_result}\n```\n\n"
+            
         elif entry['type'] == 'phase':
             formatted_log += f"\n---\n## {entry['content']}\n---\n\n"
     
@@ -1291,7 +1280,7 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
     return status_info
 
 # Create the professional interface
-with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="🎭 Consilium: Multi-AI Expert Consensus Platform", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
     # 🎭 Consilium: Multi-AI Expert Consensus Platform
 
@@ -1307,7 +1296,7 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
     * Visual roundtable of the AI models, including speech bubbles to see the discussion in real time.
     * MCP mode enabled to also use it directly in, for example, Claude Desktop (without the visual table).
     * Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.3-70B-Instruct** and **QwQ-32B** via the SambaNova API.
-    * Research Agent to search via **DuckDuckGo** or **Wikipedia**, added as a tool for the models from Mistral and Llama.
+    * Research Agent with 6 sources (**Web Search**, **Wikipedia**, **arXiv**, **GitHub**, **SEC EDGAR**, **Google Scholar**) for comprehensive live research.
     * Assign different roles to the models, the protocol they should follow, and decide the communication strategy.
     * Pick one model as the lead analyst (had the best results when picking Mistral).
     * Configure the amount of discussion rounds.
@@ -1534,6 +1523,32 @@ with gr.Blocks(title="🎭 Consilium: Visual AI Consensus Platform", theme=gr.th
         """)
     
     with gr.Tab("📚 Documentation"):
+        gr.Markdown("""
+        ## 🔬 **Research Capabilities**
+
+        ### **🌐 Multi-Source Research**
+        - **DuckDuckGo Web Search**: Current events, news, real-time information
+        - **Wikipedia**: Authoritative background and encyclopedic data  
+        - **arXiv**: Academic papers and scientific research preprints
+        - **Google Scholar**: Peer-reviewed research and citation analysis
+        - **GitHub**: Technology trends, adoption patterns, developer activity
+        - **SEC EDGAR**: Public company financial data and regulatory filings
+
+        ### **🎯 Smart Research Routing**
+        The system automatically routes queries to the most appropriate sources:
+        - **Academic queries** → arXiv + Google Scholar
+        - **Technology questions** → GitHub + Web Search
+        - **Company research** → SEC filings + Web Search  
+        - **Current events** → Web Search + Wikipedia
+        - **Deep research** → Multi-source synthesis with quality scoring
+
+        ### **📊 Research Quality Scoring**
+        Each research result is scored on:
+        - **Recency** (0-1): How current is the information
+        - **Authority** (0-1): Source credibility and reliability
+        - **Specificity** (0-1): Quantitative data and specific details
+        - **Relevance** (0-1): How well it matches the query
+        """)
         gr.Markdown("""
         ## 🎓 **Expert Role Assignments**
         
