@@ -34,14 +34,6 @@ class GoogleScholarTool(BaseTool):
             for i, paper in enumerate(search_query):
                 if i >= max_results:
                     break
-                # Try to get additional info if available
-                try:
-                    # Some papers might need to be filled for complete info
-                    if hasattr(paper, 'fill') and callable(paper.fill):
-                        paper = paper.fill()
-                except:
-                    # If fill fails, use paper as-is
-                    pass
                 papers.append(paper)
             
             if papers:
