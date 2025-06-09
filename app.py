@@ -270,7 +270,7 @@ class VisualConsensusEngine:
                     })
                     time.sleep(1)
 
-                result = self._execute_research_function(function_name, arguments)
+                result = self._execute_research_function(function_name, arguments, calling_model_name)
                 
                 # Ensure result is a string
                 if not isinstance(result, str):
@@ -360,7 +360,7 @@ class VisualConsensusEngine:
             return message.content or "Analysis completed with research integration."
 
 
-    def _execute_research_function(self, function_name: str, arguments: dict) -> str:
+    def _execute_research_function(self, function_name: str, arguments: dict, requesting_model_name: str = None) -> str:
         """Execute research function with REAL-TIME visual feedback and progress indicators"""
         
         query_param = arguments.get("query") or arguments.get("topic") or arguments.get("technology") or arguments.get("company")
@@ -439,14 +439,14 @@ class VisualConsensusEngine:
             
             # Phase 3: Show research ACTUALLY complete (after execution)
             if query_param:
-                self.show_research_complete(function_name, query_param, len(result))
+                self.show_research_complete(function_name, query_param, len(result), requesting_model_name)
                 
             return result
             
         except Exception as e:
             error_msg = str(e)
             if query_param:
-                self.show_research_error(function_name, query_param, error_msg)
+                self.show_research_error(function_name, query_param, error_msg, requesting_model_name)
             return f"Research function error: {error_msg}"
     
     def show_research_starting(self, function: str, query: str):
@@ -494,7 +494,7 @@ class VisualConsensusEngine:
         })
         time.sleep(0.5)
 
-    def show_research_complete(self, function: str, query: str, result_length: int):
+    def show_research_complete(self, function: str, query: str, result_length: int, requesting_model_name: str = None):
         """Show research ACTUALLY completed with data quality indicators"""
         session = get_or_create_session_state(self.session_id)
         current_state = session["roundtable_state"]
@@ -546,7 +546,7 @@ class VisualConsensusEngine:
         self.update_visual_state({
             "participants": participants,
             "messages": all_messages,
-            "currentSpeaker": None,
+            "currentSpeaker": requesting_model_name,
             "thinking": [],
             "showBubbles": existing_bubbles + ["Research Agent"]
         })
@@ -564,7 +564,7 @@ class VisualConsensusEngine:
         }
         return time_estimates.get(function_name, "1-3 minutes")
 
-    def show_research_error(self, function: str, query: str, error: str):
+    def show_research_error(self, function: str, query: str, error: str, requesting_model_name: str = None):
         """Show research error"""
         session = get_or_create_session_state(self.session_id)
         current_state = session["roundtable_state"]
@@ -590,7 +590,7 @@ class VisualConsensusEngine:
         self.update_visual_state({
             "participants": participants,
             "messages": all_messages,
-            "currentSpeaker": None,
+            "currentSpeaker": requesting_model_name,
             "thinking": [],
             "showBubbles": existing_bubbles + ["Research Agent"]
         })
