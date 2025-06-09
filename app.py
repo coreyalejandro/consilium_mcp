@@ -512,7 +512,7 @@ class VisualConsensusEngine:
             "participants": participants,
             "messages": all_messages,
             "currentSpeaker": None,
-            "thinking": [],
+            "thinking": current_state.get("thinking", []) + ["Research Agent"],
             "showBubbles": existing_bubbles + ["Research Agent"]
         })
         time.sleep(0.5)
@@ -570,7 +570,7 @@ class VisualConsensusEngine:
             "participants": participants,
             "messages": all_messages,
             "currentSpeaker": None,
-            "thinking": [],
+            "thinking": current_state.get("thinking", []),
             "showBubbles": existing_bubbles + ["Research Agent"]
         })
         time.sleep(1.5)  # Longer pause to show the detailed completion
@@ -637,16 +637,11 @@ class VisualConsensusEngine:
         }
         all_messages.append(progress_message)
         
-        # Get current thinking and ALWAYS remove Research Agent
-        current_thinking = list(current_state.get("thinking", []))
-        if "Research Agent" in current_thinking:
-            current_thinking.remove("Research Agent")
-        
         self.update_visual_state({
             "participants": participants,
             "messages": all_messages,
             "currentSpeaker": None,
-            "thinking": current_thinking,  # Research Agent NEVER in thinking
+            "thinking": current_state.get("thinking", []) + ["Research Agent"],
             "showBubbles": existing_bubbles
         })
         time.sleep(0.3)
