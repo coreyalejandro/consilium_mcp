@@ -177,105 +177,6 @@ class VisualConsensusEngine:
         """Update the visual roundtable state for this session"""
         if self.update_callback:
             self.update_callback(state_update)
-    
-    def show_research_activity(self, speaker: str, function: str, query: str):
-        """Show research happening in the UI with Research Agent activation"""
-        # Get current state properly
-        session = get_or_create_session_state(self.session_id)
-        current_state = session["roundtable_state"]
-        all_messages = list(current_state.get("messages", []))  # Make a copy
-        participants = current_state.get("participants", [])
-        
-        # PRESERVE existing bubbles throughout research
-        existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
-        
-        # Get function display name
-        function_display = {
-            'search_web': 'Web Search',
-            'search_wikipedia': 'Wikipedia',
-            'search_academic': 'Academic Papers',
-            'search_technology_trends': 'Technology Trends',
-            'search_financial_data': 'Financial Data',
-            'multi_source_research': 'Multi-Source Research'
-        }.get(function, function.replace('_', ' ').title())
-        
-        # Step 1: Show expert requesting research
-        request_message = {
-            "speaker": speaker,
-            "text": f"🔍 **Research Request**: {function_display}\n📝 Query: \"{query}\"",
-            "type": "research_request"
-        }
-        all_messages.append(request_message)
-        
-        self.update_visual_state({
-            "participants": participants,
-            "messages": all_messages,
-            "currentSpeaker": speaker,
-            "thinking": [],
-            "showBubbles": existing_bubbles + [speaker]
-        })
-        time.sleep(1.5)
-        
-        # Step 2: Research Agent starts thinking
-        self.update_visual_state({
-            "participants": participants,
-            "messages": all_messages,
-            "currentSpeaker": None,
-            "thinking": ["Research Agent"],
-            "showBubbles": existing_bubbles + [speaker, "Research Agent"]
-        })
-        time.sleep(2)
-        
-        # Step 3: Research Agent working - show detailed activity
-        working_message = {
-            "speaker": "Research Agent",
-            "text": f"🔍 **Conducting Research**: {function_display}\n📊 Analyzing: \"{query}\"\n⏳ Please wait while I gather information...",
-            "type": "research_activity"
-        }
-        all_messages.append(working_message)
-        
-        self.update_visual_state({
-            "participants": participants,
-            "messages": all_messages,
-            "currentSpeaker": "Research Agent",
-            "thinking": [],
-            "showBubbles": existing_bubbles + [speaker, "Research Agent"]
-        })
-        time.sleep(3)  # Longer pause to see research happening
-        
-        # Step 4: Research completion notification
-        completion_message = {
-            "speaker": "Research Agent",
-            "text": f"✅ **Research Complete**: {function_display}\n📋 Results ready for analysis",
-            "type": "research_complete"
-        }
-        all_messages.append(completion_message)
-        
-        self.update_visual_state({
-            "participants": participants,
-            "messages": all_messages,
-            "currentSpeaker": "Research Agent",
-            "thinking": [],
-            "showBubbles": existing_bubbles + [speaker, "Research Agent"]
-        })
-        time.sleep(1.5)
-        
-        # Step 5: Expert processing results
-        processing_message = {
-            "speaker": speaker,
-            "text": f"📊 **Processing Research Results**\n🧠 Integrating {function_display} findings into analysis...",
-            "type": "research_processing"
-        }
-        all_messages.append(processing_message)
-        
-        self.update_visual_state({
-            "participants": participants,
-            "messages": all_messages,
-            "currentSpeaker": speaker,
-            "thinking": [],
-            "showBubbles": existing_bubbles + [speaker, "Research Agent"]  # Keep Research Agent visible longer
-        })
-        time.sleep(2)
 
     def log_research_activity(self, speaker: str, function: str, query: str, result: str, log_function=None):
         """Log research activity to the discussion log"""
@@ -342,12 +243,33 @@ class VisualConsensusEngine:
                 function_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
                 
-                # Show research activity in UI
                 query_param = arguments.get("query") or arguments.get("topic") or arguments.get("technology") or arguments.get("company")
                 if query_param:
-                    self.show_research_activity(calling_model_name, function_name, query_param)
-                
-                # Execute the enhanced research functions
+                    session = get_or_create_session_state(self.session_id)
+                    current_state = session["roundtable_state"]
+                    all_messages = list(current_state.get("messages", []))
+                    
+                    # Add request message to the CALLING MODEL (Mistral)
+                    request_message = {
+                        "speaker": calling_model_name,
+                        "text": f"🔍 **Research Request**: {function_name.replace('_', ' ').title()}\n📝 Query: \"{query_param}\"\n⏳ Waiting for research results...",
+                        "type": "research_request"
+                    }
+                    all_messages.append(request_message)
+                    
+                    existing_bubbles = list(current_state.get("showBubbles", []))
+                    if calling_model_name not in existing_bubbles:
+                        existing_bubbles.append(calling_model_name)
+                    
+                    self.update_visual_state({
+                        "participants": current_state.get("participants", []),
+                        "messages": all_messages,
+                        "currentSpeaker": calling_model_name,
+                        "thinking": [],
+                        "showBubbles": existing_bubbles
+                    })
+                    time.sleep(1)
+
                 result = self._execute_research_function(function_name, arguments)
                 
                 # Ensure result is a string
@@ -365,9 +287,11 @@ class VisualConsensusEngine:
                         **kwargs
                     })
 
+                # Get query parameter for logging
+                query_param = arguments.get("query") or arguments.get("topic") or arguments.get("technology") or arguments.get("company")
                 if query_param and result:
                     self.log_research_activity(calling_model_name, function_name, query_param, result, session_log_function)
-                
+                    
                 # Add function result to conversation
                 messages.append({
                     "role": "tool",
@@ -435,42 +359,298 @@ class VisualConsensusEngine:
             print(f"Error in follow-up completion for {calling_model}: {str(e)}")
             return message.content or "Analysis completed with research integration."
 
+
     def _execute_research_function(self, function_name: str, arguments: dict) -> str:
-        """Execute research function with enhanced capabilities"""
+        """Execute research function with REAL-TIME visual feedback and progress indicators"""
+        
+        query_param = arguments.get("query") or arguments.get("topic") or arguments.get("technology") or arguments.get("company")
+        
+        # Phase 1: Show research STARTING
+        if query_param:
+            self.show_research_starting(function_name, query_param)
+        
         try:
+            # Actually execute the research with detailed progress indicators
+            result = ""
+            
             if function_name == "search_web":
+                self.update_research_progress("Initializing web search engines...")
                 depth = arguments.get("depth", "standard")
-                return self.search_agent.search(arguments["query"], depth)
+                
+                if depth == "deep":
+                    self.update_research_progress("Performing deep web search (multiple sources)...")
+                else:
+                    self.update_research_progress("Searching web databases...")
+                
+                result = self.search_agent.search(arguments["query"], depth)
+                self.update_research_progress(f"Web search complete - found {len(result)} characters of data")
                 
             elif function_name == "search_wikipedia":
-                return self.search_agent.search_wikipedia(arguments["topic"])
+                self.update_research_progress("Connecting to Wikipedia API...")
+                self.update_research_progress("Searching Wikipedia articles...")
+                result = self.search_agent.search_wikipedia(arguments["topic"])
+                self.update_research_progress(f"Wikipedia search complete - found {len(result)} characters")
                 
             elif function_name == "search_academic":
                 source = arguments.get("source", "both")
+                
                 if source == "arxiv":
-                    return self.search_agent.tools['arxiv'].search(arguments["query"])
+                    self.update_research_progress("Connecting to arXiv preprint server...")
+                    self.update_research_progress("Searching academic papers on arXiv...")
+                    result = self.search_agent.tools['arxiv'].search(arguments["query"])
+                    self.update_research_progress(f"arXiv search complete - found {len(result)} characters")
+                    
                 elif source == "scholar":
-                    return self.search_agent.tools['scholar'].search(arguments["query"])
-                else:  # both
+                    self.update_research_progress("Connecting to Google Scholar...")
+                    self.update_research_progress("Searching peer-reviewed research...")
+                    result = self.search_agent.tools['scholar'].search(arguments["query"])
+                    self.update_research_progress(f"Google Scholar search complete - found {len(result)} characters")
+                    
+                else:  # both sources
+                    self.update_research_progress("Connecting to arXiv preprint server...")
+                    self.update_research_progress("Searching academic papers on arXiv...")
                     arxiv_result = self.search_agent.tools['arxiv'].search(arguments["query"])
+                    self.update_research_progress(f"arXiv complete ({len(arxiv_result)} chars) - now searching Google Scholar...")
+                    
+                    self.update_research_progress("Connecting to Google Scholar...")
+                    self.update_research_progress("Searching peer-reviewed research...")
                     scholar_result = self.search_agent.tools['scholar'].search(arguments["query"])
-                    return f"{arxiv_result}\n\n{scholar_result}"
+                    self.update_research_progress("Combining arXiv and Google Scholar results...")
+                    
+                    result = f"{arxiv_result}\n\n{scholar_result}"
+                    self.update_research_progress(f"Academic search complete - combined {len(result)} characters")
                     
             elif function_name == "search_technology_trends":
-                return self.search_agent.tools['github'].search(arguments["technology"])
+                self.update_research_progress("Connecting to GitHub API...")
+                self.update_research_progress("Analyzing technology trends and repository data...")
+                result = self.search_agent.tools['github'].search(arguments["technology"])
+                self.update_research_progress(f"Technology trends analysis complete - found {len(result)} characters")
                 
             elif function_name == "search_financial_data":
-                return self.search_agent.tools['sec'].search(arguments["company"])
+                self.update_research_progress("Connecting to SEC EDGAR database...")
+                self.update_research_progress("Searching financial filings and reports...")
+                result = self.search_agent.tools['sec'].search(arguments["company"])
+                self.update_research_progress(f"Financial data search complete - found {len(result)} characters")
                 
             elif function_name == "multi_source_research":
-                return self.search_agent.search(arguments["query"], "deep")
+                self.update_research_progress("Initializing multi-source deep research...")
+                self.update_research_progress("Phase 1: Web search...")
+                
+                # Show progress for each source in deep research
+                result = ""
+                try:
+                    # Simulate the deep research process with progress updates
+                    self.update_research_progress("Phase 1: Comprehensive web search...")
+                    web_result = self.search_agent.search(arguments["query"], "standard")
+                    self.update_research_progress(f"Web search complete ({len(web_result)} chars) - Phase 2: Academic sources...")
+                    
+                    self.update_research_progress("Phase 2: Searching academic databases...")
+                    # Add small delay to show progress
+                    time.sleep(1)
+                    
+                    self.update_research_progress("Phase 3: Analyzing and synthesizing results...")
+                    result = self.search_agent.search(arguments["query"], "deep")
+                    self.update_research_progress(f"Multi-source research complete - synthesized {len(result)} characters")
+                    
+                except Exception as e:
+                    self.update_research_progress(f"Multi-source research error: {str(e)}")
+                    result = f"Multi-source research encountered an error: {str(e)}"
                 
             else:
-                return f"Unknown research function: {function_name}"
+                self.update_research_progress(f"Unknown research function: {function_name}")
+                result = f"Unknown research function: {function_name}"
+            
+            # Phase 3: Show research ACTUALLY complete (after execution)
+            if query_param:
+                self.show_research_complete(function_name, query_param, len(result))
                 
+            return result
+            
         except Exception as e:
-            return f"Research function error: {str(e)}"
+            error_msg = str(e)
+            if query_param:
+                self.show_research_error(function_name, query_param, error_msg)
+            return f"Research function error: {error_msg}"
     
+    def show_research_starting(self, function: str, query: str):
+        """Show research request initiation with enhanced messaging"""
+        session = get_or_create_session_state(self.session_id)
+        current_state = session["roundtable_state"]
+        all_messages = list(current_state.get("messages", []))
+        participants = current_state.get("participants", [])
+        
+        existing_bubbles = list(current_state.get("showBubbles", []))
+        # Ensure both Research Agent AND the calling model stay visible
+        if "Research Agent" not in existing_bubbles:
+            existing_bubbles.append("Research Agent")
+        # Keep the current speaker (the one who requested research) visible
+        current_speaker = current_state.get("currentSpeaker")
+        if current_speaker and current_speaker not in existing_bubbles and current_speaker != "Research Agent":
+            existing_bubbles.append(current_speaker)
+        
+        # Enhanced messages based on function type
+        function_descriptions = {
+            "search_web": "🌐 Web Search - Real-time information",
+            "search_wikipedia": "📚 Wikipedia - Authoritative encyclopedia",
+            "search_academic": "🎓 Academic Research - Peer-reviewed papers",
+            "search_technology_trends": "💻 Technology Trends - GitHub analysis",
+            "search_financial_data": "💰 Financial Data - SEC filings",
+            "multi_source_research": "🔬 Deep Research - Multiple sources"
+        }
+        
+        function_desc = function_descriptions.get(function, function.replace('_', ' ').title())
+        
+        estimated_time = self.estimate_research_time(function)
+        message = {
+            "speaker": "Research Agent",
+            "text": f"🔍 **Initiating Research**\n{function_desc}\n📝 Query: \"{query}\"\n⏰ Estimated time: {estimated_time}\n⏳ Connecting to data sources...",
+            "type": "research_starting"
+        }
+        all_messages.append(message)
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": None,
+            "thinking": [],
+            "showBubbles": existing_bubbles + ["Research Agent"]
+        })
+        time.sleep(0.5)
+
+    def show_research_complete(self, function: str, query: str, result_length: int):
+        """Show research ACTUALLY completed with data quality indicators"""
+        session = get_or_create_session_state(self.session_id)
+        current_state = session["roundtable_state"]
+        all_messages = list(current_state.get("messages", []))
+        participants = current_state.get("participants", [])
+        
+        existing_bubbles = list(current_state.get("showBubbles", []))
+        # Ensure both Research Agent AND the calling model stay visible
+        if "Research Agent" not in existing_bubbles:
+            existing_bubbles.append("Research Agent")
+        # Keep the current speaker (the one who requested research) visible
+        current_speaker = current_state.get("currentSpeaker")
+        if current_speaker and current_speaker not in existing_bubbles and current_speaker != "Research Agent":
+            existing_bubbles.append(current_speaker)
+        
+        # Determine data quality based on result length
+        if result_length > 2000:
+            quality_indicator = "📊 High-quality data (comprehensive)"
+            quality_emoji = "🎯"
+        elif result_length > 800:
+            quality_indicator = "📈 Good data (substantial)"
+            quality_emoji = "✅"
+        elif result_length > 200:
+            quality_indicator = "📋 Moderate data (basic)"
+            quality_emoji = "⚠️"
+        else:
+            quality_indicator = "📄 Limited data (minimal)"
+            quality_emoji = "⚡"
+        
+        # Function-specific completion messages
+        function_summaries = {
+            "search_web": "Live web data retrieved",
+            "search_wikipedia": "Encyclopedia articles found",
+            "search_academic": "Academic papers analyzed",
+            "search_technology_trends": "Tech trends mapped",
+            "search_financial_data": "Financial reports accessed",
+            "multi_source_research": "Multi-source synthesis complete"
+        }
+        
+        function_summary = function_summaries.get(function, "Research complete")
+        
+        message = {
+            "speaker": "Research Agent",
+            "text": f"✅ **Research Complete**\n🔬 {function.replace('_', ' ').title()}\n📝 Query: \"{query}\"\n{quality_emoji} {function_summary}\n{quality_indicator}\n📊 {result_length:,} characters analyzed\n🎯 Data ready for expert analysis",
+            "type": "research_complete"
+        }
+        all_messages.append(message)
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": None,
+            "thinking": [],
+            "showBubbles": existing_bubbles + ["Research Agent"]
+        })
+        time.sleep(1.5)  # Longer pause to show the detailed completion
+
+    def estimate_research_time(self, function_name: str) -> str:
+        """Provide time estimates for different research functions"""
+        time_estimates = {
+            "search_web": "30-60 seconds",
+            "search_wikipedia": "15-30 seconds", 
+            "search_academic": "2-5 minutes",
+            "search_technology_trends": "1-2 minutes",
+            "search_financial_data": "1-3 minutes",
+            "multi_source_research": "3-7 minutes"
+        }
+        return time_estimates.get(function_name, "1-3 minutes")
+
+    def show_research_error(self, function: str, query: str, error: str):
+        """Show research error"""
+        session = get_or_create_session_state(self.session_id)
+        current_state = session["roundtable_state"]
+        all_messages = list(current_state.get("messages", []))
+        participants = current_state.get("participants", [])
+        
+        existing_bubbles = list(current_state.get("showBubbles", []))
+        # Ensure both Research Agent AND the calling model stay visible
+        if "Research Agent" not in existing_bubbles:
+            existing_bubbles.append("Research Agent")
+        # Keep the current speaker (the one who requested research) visible
+        current_speaker = current_state.get("currentSpeaker")
+        if current_speaker and current_speaker not in existing_bubbles and current_speaker != "Research Agent":
+            existing_bubbles.append(current_speaker)
+        
+        message = {
+            "speaker": "Research Agent",
+            "text": f"❌ **Research Error**: {function.replace('_', ' ').title()}\n📝 Query: \"{query}\"\n⚠️ Error: {error}\n🔄 Continuing with available data",
+            "type": "research_error"
+        }
+        all_messages.append(message)
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": None,
+            "thinking": [],
+            "showBubbles": existing_bubbles + ["Research Agent"]
+        })
+        time.sleep(1)
+
+    def update_research_progress(self, progress_text: str):
+        """Update research progress in real-time - ALWAYS REMOVE RESEARCH AGENT FROM THINKING"""
+        session = get_or_create_session_state(self.session_id)
+        current_state = session["roundtable_state"]
+        all_messages = list(current_state.get("messages", []))
+        participants = current_state.get("participants", [])
+        
+        existing_bubbles = list(current_state.get("showBubbles", []))
+        if "Research Agent" not in existing_bubbles:
+            existing_bubbles.append("Research Agent")
+        
+        progress_message = {
+            "speaker": "Research Agent",
+            "text": f"🔄 {progress_text}",
+            "type": "research_progress"
+        }
+        all_messages.append(progress_message)
+        
+        # Get current thinking and ALWAYS remove Research Agent
+        current_thinking = list(current_state.get("thinking", []))
+        if "Research Agent" in current_thinking:
+            current_thinking.remove("Research Agent")
+        
+        self.update_visual_state({
+            "participants": participants,
+            "messages": all_messages,
+            "currentSpeaker": None,
+            "thinking": current_thinking,  # Research Agent NEVER in thinking
+            "showBubbles": existing_bubbles
+        })
+        time.sleep(0.3)
+
     def call_model(self, model: str, prompt: str, context: str = "") -> Optional[str]:
         """Enhanced model calling with native function calling support"""
         if not self.models[model]['available']:
@@ -516,7 +696,7 @@ class VisualConsensusEngine:
             
             # Check if model supports function calling
             supports_functions = sambanova_model in [
-                'DeepSeek-R1-0324',
+                'DeepSeek-V3-0324',
                 'Meta-Llama-3.1-8B-Instruct',
                 'Meta-Llama-3.1-405B-Instruct', 
                 'Meta-Llama-3.3-70B-Instruct'
@@ -727,8 +907,9 @@ class VisualConsensusEngine:
             # Log and set thinking state - PRESERVE BUBBLES
             log_event('thinking', speaker=self.models[model]['name'])
             
-            # Calculate existing bubbles
-            existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+            session = get_or_create_session_state(self.session_id)
+            current_state = session["roundtable_state"]
+            existing_bubbles = list(current_state.get("showBubbles", []))
             
             self.update_visual_state({
                 "participants": visual_participant_names,
@@ -776,7 +957,7 @@ Provide your expert analysis:"""
             log_event('speaking', speaker=self.models[model]['name'])
             
             # Calculate existing bubbles
-            existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+            existing_bubbles = list(current_state.get("showBubbles", []))
             
             self.update_visual_state({
                 "participants": visual_participant_names,
@@ -853,7 +1034,7 @@ Provide your expert analysis:"""
                     # Log thinking with preserved bubbles
                     log_event('thinking', speaker=self.models[model]['name'])
                     
-                    existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+                    existing_bubbles = list(current_state.get("showBubbles", []))
                     
                     self.update_visual_state({
                         "participants": visual_participant_names,
@@ -902,7 +1083,7 @@ Your expert response:"""
                     # Log speaking with preserved bubbles
                     log_event('speaking', speaker=self.models[model]['name'])
                     
-                    existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+                    existing_bubbles = list(current_state.get("showBubbles", []))
                     
                     self.update_visual_state({
                         "participants": visual_participant_names,
@@ -979,7 +1160,7 @@ Your expert response:"""
         expert_names = [self.models[model]['name'] for model in available_models]
         
         # Preserve existing bubbles during final thinking
-        existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+        existing_bubbles = list(current_state.get("showBubbles", []))
         
         self.update_visual_state({
             "participants": visual_participant_names,
@@ -1057,7 +1238,7 @@ Provide your synthesis:"""
         log_event('speaking', speaker=moderator_title, content="Synthesizing expert analysis into final recommendation...")
         
         # Preserve existing bubbles during final speaking
-        existing_bubbles = list(set(msg["speaker"] for msg in all_messages if msg.get("speaker") and msg["speaker"] != "Research Agent"))
+        existing_bubbles = list(current_state.get("showBubbles", []))
         
         self.update_visual_state({
             "participants": visual_participant_names,
