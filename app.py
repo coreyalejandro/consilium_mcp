@@ -1441,13 +1441,12 @@ def check_model_status_session(session_id_state: str = None, request: gr.Request
 with gr.Blocks(title="🎭 Consilium: Multi-AI Expert Consensus Platform", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
     # 🎭 Consilium: Multi-AI Expert Consensus Platform
+    **Watch expert AI models collaborate with live research to solve your most complex decisions**
 
-    🏆 **Gradio Agents and MCP Hackathon 2025** submission with [custom Gradio component](https://huggingface.co/spaces/Agents-MCP-Hackathon/gradio_consilium_roundtable).
-
-    📼 **Demo Videos:** [UI Demo](https://youtu.be/ciYLqI-Nawc) | [MCP Demo](https://youtu.be/r92vFUXNg74)
+    🏆 **Gradio Agents and MCP Hackathon 2025** submission with [custom Gradio component](https://huggingface.co/spaces/Agents-MCP-Hackathon/gradio_consilium_roundtable). 📼 **Demo Videos:** [UI Demo](https://youtu.be/ciYLqI-Nawc) | [MCP Demo](https://youtu.be/r92vFUXNg74)
 
 
-    ## Features:
+    ### 🚀 Features:
     
     * Visual roundtable of the AI models, including speech bubbles to see the discussion in real time.
     * MCP mode enabled to also use it directly in, for example, Claude Desktop (without the visual table).
