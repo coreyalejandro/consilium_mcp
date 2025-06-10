@@ -1444,10 +1444,13 @@ with gr.Blocks(title="🎭 Consilium: Multi-AI Expert Consensus Platform", theme
 
     **Watch expert AI models collaborate with live research to solve your most complex decisions**
     
-    This MCP server was built for the Gradio Agents and MCP Hackathon 2025. Additionally, I built a custom Gradio component for the roundtable (https://huggingface.co/spaces/azettl/gradio_consilium_roundtable).
+    This MCP server was built for the Gradio Agents and MCP Hackathon 2025. Additionally, I built a custom Gradio component for the roundtable (https://huggingface.co/spaces/Agents-MCP-Hackathon/gradio_consilium_roundtable).
 
-    📼 Video UI: https://youtu.be/ciYLqI-Nawc 
-    📼 Video MCP: https://youtu.be/r92vFUXNg74
+    ## Demo Videos:
+    
+    * 📼 Video UI: https://youtu.be/ciYLqI-Nawc 
+    * 📼 Video MCP: https://youtu.be/r92vFUXNg74
+
     
     ## Features:
     
