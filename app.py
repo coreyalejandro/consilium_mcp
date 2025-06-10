@@ -1475,7 +1475,7 @@ with gr.Blocks(title="🎭 Consilium: Multi-AI Expert Consensus Platform", theme
                 )
                 
                 # Professional question suggestion buttons
-                with gr.Row():
+                with gr.Accordion("✒️ Example Questions", open=True):
                     suggestion_btn1 = gr.Button("🏢 Business Strategy", size="sm")
                     suggestion_btn2 = gr.Button("⚛️ Technology Choice", size="sm") 
                     suggestion_btn3 = gr.Button("🌍 Policy Analysis", size="sm")
