@@ -18,11 +18,13 @@ thumbnail: >-
   https://cdn-uploads.huggingface.co/production/uploads/65ba36f30659ad04d028d083/Ubq8rnD8WhWpw8Qt32_lk.png
 ---
 
-## Videos:
-* 📼 Video UI: https://youtu.be/ciYLqI-Nawc 
-* 📼 Video MCP: https://youtu.be/r92vFUXNg74
+## Videos
 
-## Features:
+* 📼 Video UI: <https://youtu.be/ciYLqI-Nawc>
+* 📼 Video MCP: <https://youtu.be/r92vFUXNg74>
+
+## Features
+
 * Visual roundtable of the AI models, including speech bubbles to see the discussion in real time.
 * MCP mode enabled to also use it directly in, for example, Claude Desktop (without the visual table).
 * Includes Mistral (**mistral-large-latest**) via their API and the Models **DeepSeek-R1**, **Meta-Llama-3.3-70B-Instruct** and **QwQ-32B** via the SambaNova API.

@@ -12,6 +12,8 @@ from collections import Counter
 import threading
 import queue
 import uuid
+import hashlib
+import random
 from gradio_consilium_roundtable import consilium_roundtable
 from smolagents import CodeAgent, DuckDuckGoSearchTool, FinalAnswerTool, InferenceClientModel, VisitWebpageTool, Tool
 from research_tools import EnhancedResearchAgent
@@ -27,6 +29,9 @@ MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
 
 # Session-based storage for isolated discussions
 user_sessions: Dict[str, Dict] = {}
+
+# Simple in-memory cache for follow-up completions
+_followup_cache = {}
 
 # Model Images
 avatar_images = {
@@ -330,16 +335,46 @@ class VisualConsensusEngine:
                 }
                 model_name = model_mapping.get(calling_model, 'Meta-Llama-3.3-70B-Instruct')
             
-            final_completion = client.chat.completions.create(
+            # ----- Cache key for follow-up completion -----
+            def _messages_fingerprint(msgs: list) -> str:
+                # Deterministic hash over role+content minimal fields
+                m = hashlib.sha256()
+                for mobj in msgs:
+                    m.update((mobj.get("role","") + "|" + str(mobj.get("content",""))).encode("utf-8"))
+                    # If tool_calls present, include their names+args to avoid collisions
+                    if "tool_calls" in mobj and isinstance(mobj["tool_calls"], list):
+                        for t in mobj["tool_calls"]:
+                            fn = getattr(getattr(t, "function", None), "name", "")
+                            args = getattr(getattr(t, "function", None), "arguments", "")
+                            m.update((fn + "|" + str(args)).encode("utf-8"))
+                return m.hexdigest()
+
+            key = (calling_model, _messages_fingerprint(messages))
+            if key in _followup_cache:
+                cached = _followup_cache[key]
+                return cached
+
+            # ----- Robust follow-up with bounded retries -----
+            def _with_retry(call):
+                delay = 0.6
+                for attempt in range(3):
+                    try:
+                        return call()
+                    except Exception as e:
+                        if attempt == 2:
+                            raise
+                        time.sleep(delay + random.random() * 0.2)
+                        delay *= 2
+
+            final_completion = _with_retry(lambda: client.chat.completions.create(
                 model=model_name,
                 messages=messages,
-                max_tokens=1000,
+                max_tokens=700,   # modest cap; faster & cheaper
                 temperature=0.7
-            )
-            
+            ))
+
             if final_completion and final_completion.choices and len(final_completion.choices) > 0:
                 final_content = final_completion.choices[0].message.content
-                
                 if isinstance(final_content, list):
                     text_parts = []
                     for part in final_content:
@@ -347,13 +382,16 @@ class VisualConsensusEngine:
                             text_parts.append(part['text'])
                         elif isinstance(part, str):
                             text_parts.append(part)
-                    return ' '.join(text_parts) if text_parts else "Analysis completed with research integration."
+                    out = ' '.join(text_parts) if text_parts else "Analysis completed with research integration."
                 elif isinstance(final_content, str):
-                    return final_content
+                    out = final_content
                 else:
-                    return str(final_content) if final_content else "Analysis completed with research integration."
+                    out = str(final_content) if final_content else "Analysis completed with research integration."
             else:
-                return message.content or "Analysis completed with research integration."
+                out = message.content or "Analysis completed with research integration."
+
+            _followup_cache[key] = out
+            return out
             
         except Exception as e:
             print(f"Error in follow-up completion for {calling_model}: {str(e)}")
