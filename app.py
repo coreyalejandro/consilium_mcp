@@ -17,6 +17,8 @@ import random
 from gradio_consilium_roundtable import consilium_roundtable
 from smolagents import CodeAgent, DuckDuckGoSearchTool, FinalAnswerTool, InferenceClientModel, VisitWebpageTool, Tool
 from research_tools import EnhancedResearchAgent
+from research_tools import log_training_example, DSPySynthesisProgram
+from research_tools import get_report_template
 from enhanced_search_functions import ENHANCED_SEARCH_FUNCTIONS
 
 # Load environment variables
@@ -26,6 +28,13 @@ load_dotenv()
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY") 
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
 MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "mistral")
+
+# Optional: dataset logging and DSPy synthesis (OFF by default)
+USE_DATASET_LOGGING = os.getenv("USE_DATASET_LOGGING", "0") == "1"
+DATASET_LOG_PATH = os.getenv("DATASET_LOG_PATH", "data/training.jsonl")
+USE_DSPY_SYNTHESIS = os.getenv("USE_DSPY_SYNTHESIS", "0") == "1"
+STRUCTURED_REPORT_MODE = os.getenv("STRUCTURED_REPORT_MODE", "0") == "1"
+STRUCTURED_REPORT_TYPE = os.getenv("STRUCTURED_REPORT_TYPE", "enhancement_plan_v1")
 
 # Session-based storage for isolated discussions
 user_sessions: Dict[str, Dict] = {}
@@ -101,6 +110,7 @@ class VisualConsensusEngine:
         self.search_agent = EnhancedResearchAgent()
         self.update_callback = update_callback
         self.session_id = session_id
+        self.dspy = DSPySynthesisProgram(enabled=USE_DSPY_SYNTHESIS)
         
         # Get session-specific keys or fall back to global
         session = get_or_create_session_state(session_id) if session_id else {"api_keys": {}}
@@ -354,6 +364,33 @@ class VisualConsensusEngine:
                 cached = _followup_cache[key]
                 return cached
 
+            # ----- Optional: DSPy synthesis path (when enabled) -----
+            if self.dspy and self.dspy.enabled:
+                try:
+                    dspy_out = self.dspy.run(messages)
+                    if isinstance(dspy_out, str) and dspy_out.strip():
+                        out = dspy_out
+                        # Dataset logging (optional)
+                        if USE_DATASET_LOGGING:
+                            try:
+                                tool_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
+                                log_training_example(
+                                    output_path=DATASET_LOG_PATH,
+                                    session_id=self.session_id,
+                                    calling_model=calling_model,
+                                    user_prompt=original_prompt,
+                                    tool_messages=tool_msgs,
+                                    final_output=out,
+                                    metadata={"synthesis": "dspy"},
+                                )
+                            except Exception:
+                                pass
+                        _followup_cache[key] = out
+                        return out
+                except Exception:
+                    # Fall back to standard path silently
+                    pass
+
             # ----- Robust follow-up with bounded retries -----
             def _with_retry(call):
                 delay = 0.6
@@ -366,9 +403,22 @@ class VisualConsensusEngine:
                         time.sleep(delay + random.random() * 0.2)
                         delay *= 2
 
+            # If report mode is enabled, prepend a strict template instruction
+            report_instruction = None
+            if STRUCTURED_REPORT_MODE:
+                template = get_report_template(STRUCTURED_REPORT_TYPE)
+                report_instruction = {
+                    "role": "system",
+                    "content": (
+                        "You must produce a structured report following this exact Markdown template. "
+                        "Fill all sections. Keep headings.\n\n" + template
+                    ),
+                }
+            model_messages = ([report_instruction] if report_instruction else []) + messages
+
             final_completion = _with_retry(lambda: client.chat.completions.create(
                 model=model_name,
-                messages=messages,
+                messages=model_messages,
                 max_tokens=700,   # modest cap; faster & cheaper
                 temperature=0.7
             ))
@@ -389,6 +439,22 @@ class VisualConsensusEngine:
                     out = str(final_content) if final_content else "Analysis completed with research integration."
             else:
                 out = message.content or "Analysis completed with research integration."
+
+            # Optional dataset logging for SFT preparation
+            if USE_DATASET_LOGGING:
+                try:
+                    tool_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
+                    log_training_example(
+                        output_path=DATASET_LOG_PATH,
+                        session_id=self.session_id,
+                        calling_model=calling_model,
+                        user_prompt=original_prompt,
+                        tool_messages=tool_msgs,
+                        final_output=out,
+                        metadata={"synthesis": "model"},
+                    )
+                except Exception:
+                    pass
 
             _followup_cache[key] = out
             return out

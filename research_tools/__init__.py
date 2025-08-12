@@ -6,6 +6,9 @@ from .arxiv_search import ArxivSearchTool
 from .github_search import GitHubSearchTool
 from .sec_search import SECSearchTool
 from .research_agent import EnhancedResearchAgent
+from .dataset_logger import log_training_example
+from .dspy_module import DSPySynthesisProgram
+from .report_templates import get_report_template
 
 __all__ = [
     'BaseTool',
