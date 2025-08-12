@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from functools import lru_cache
 
-
+# Local tool imports
 from .web_search import WebSearchTool
 from .wikipedia_search import WikipediaSearchTool
 from .arxiv_search import ArxivSearchTool
@@ -139,7 +139,7 @@ class EnhancedResearchAgent:
         """Wrapper for threadpool: coalesced + cached"""
         return self._tool_search_coalesced(tool_name, query, "deep")
 
-    # ---- Routing & synthesis (unchanged except helpers) ----------------------
+    # ---- Routing & synthesis -------------------------------------------------
 
     def _route_query_to_tool(self, query: str) -> str:
         """Intelligently route query to the most appropriate tool"""
@@ -178,9 +178,7 @@ class EnhancedResearchAgent:
             relevant_tools = [tool for tool in priority_order if tool in relevant_tools][:4]
         return relevant_tools
 
-    # ------------- Synthesis + helpers (unchanged from existing) --------------
-    # (Keep your existing extraction/formatting methods here — identical to original)
-    # I kept all the original methods below verbatim to avoid behavior drift:
+    # ------------- Synthesis + helpers --------------
 
     def _synthesize_multi_source_results(self, query: str, results: Dict[str, str], quality_scores: Dict[str, Dict]) -> str:
         synthesis = f"**Comprehensive Research Analysis: {query}**\n\n"
