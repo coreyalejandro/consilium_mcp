@@ -1,10 +1,41 @@
+# Core dependencies
 gradio>=5.0.0
-gradio[mcp]
-smolagents
-markdownify
-requests
-python-dotenv
-duckduckgo-search
-wikipedia
-gradio-consilium-roundtable
-openai
+requests>=2.31.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+jsonlines>=3.1.0
+
+# Fine-tuning and ML
+torch>=2.0.0
+transformers>=4.35.0
+datasets>=2.14.0
+accelerate>=0.24.0
+peft>=0.6.0
+trl>=0.7.0
+
+# DSPy for optimization
+dspy-ai>=2.4.0
+
+# Evaluation and metrics
+scikit-learn>=1.3.0
+rouge-score>=0.1.2
+nltk>=3.8.0
+
+# Model management
+huggingface-hub>=0.17.0
+wandb>=0.15.0
+
+# Utilities
+tqdm>=4.65.0
+rich>=13.0.0
+click>=8.1.0
+pyyaml>=6.0.0
+
+# Development
+pytest>=7.4.0
+black>=23.0.0
+flake8>=6.0.0
